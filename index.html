@@ -1,0 +1,1994 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <title>弹簧台球</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    html,body{height:100%;}
+    body{
+      background:#f5f5f7;color:#111111;
+      font-family:ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB",sans-serif;
+      -webkit-tap-highlight-color:transparent;
+      overscroll-behavior:none;
+      user-select:none;
+    }
+
+    /* 手机竖屏容器 - 固定375px宽度，居中显示 */
+    .mobile-frame{
+      width:375px;
+      height:100vh;
+      max-height:812px;
+      margin:0 auto;
+      background:#ffffff;
+      position:relative;
+      overflow:hidden;
+      box-shadow:0 0 20px rgba(0,0,0,0.1);
+    }
+
+    .app{
+      height:100%;display:flex;flex-direction:column;
+      padding:max(8px,env(safe-area-inset-top)) 0 max(12px,env(safe-area-inset-bottom));
+      gap:0;
+    }
+
+    /* 小程序：得分区 */
+    .scoreZone{
+      width:100%;margin:0 auto;
+      height:36px;
+      display:flex;justify-content:space-between;align-items:center;
+      padding:0 14px;
+      border-bottom:2px solid #3A6FA8;
+      background:#ffffff;
+    }
+    .scoreLeft{display:flex;align-items:center;gap:6px;}
+    .scoreLabel{font-size:15px;font-weight:700;color:#111111;}
+    .scoreValue{font-size:15px;font-weight:700;color:#111111;}
+    .scoreRight{font-size:10px;color:#aaaaaa;}
+
+    /* 小程序：游戏画布区域（蓝边边框） */
+    .stageWrap{
+      flex:1;display:flex;justify-content:center;align-items:stretch;
+      min-height:400px;
+      width:calc(100% - 20px);margin:5px auto;
+      background:#ffffff;
+      border:2.5px solid #3A6FA8;
+      border-radius:10px;
+      overflow:hidden;
+    }
+    canvas{display:block;touch-action:none;background:#fff;width:100%;height:100%;}
+    .controls{
+      width:100%;margin:0 auto;
+      display:grid;grid-template-columns:1fr auto 1fr;gap:12px;
+      align-items:center;flex-shrink:0;
+      padding:8px 10px;
+    }
+    .btnArea{display:flex;flex-direction:column;align-items:center;gap:6px;}
+    .pad{
+      width:64px;height:64px;border-radius:50%;
+      background:linear-gradient(135deg, #34c759 0%, #2db14d 100%);
+      border:none;cursor:pointer;
+      touch-action:none;
+      box-shadow:0 3px 10px rgba(52,199,89,0.35), inset 0 -2px 4px rgba(0,0,0,0.1);
+      transition:all 0.15s ease;
+      display:flex;align-items:center;justify-content:center;
+    }
+    .pad::after{
+      content:attr(data-dir);
+      color:#fff;font-size:14px;font-weight:600;
+    }
+    .pad.disabled{opacity:0.35;pointer-events:none;transform:scale(0.95);}
+    .pad.pressing{transform:translateY(2px) scale(0.96);box-shadow:0 2px 6px rgba(52,199,89,0.25);}
+    .label{font-size:10px;color:#3A6FA8;font-weight:500;}
+    .resetBtn{
+      padding:8px 16px;border-radius:12px;
+      background:#fff;border:1px solid #e5e5ea;
+      color:#1a1a1a;font-size:12px;font-weight:500;cursor:pointer;
+      box-shadow:0 2px 8px rgba(0,0,0,0.05);
+      transition:all 0.15s ease;
+    }
+    .resetBtn:active{transform:scale(0.96);box-shadow:0 1px 4px rgba(0,0,0,0.08);}
+    /* 小程序：状态栏 */
+    .statusBar{
+      width:100%;margin:0 auto;
+      display:flex;justify-content:space-between;align-items:center;
+      padding:6px 12px;
+      height:28px;
+    }
+    .levelInfo{font-size:12px;color:#666666;font-weight:500;}
+    .levelInfo .current{color:#3A6FA8;font-weight:600;}
+    .hintText{font-size:11px;color:#999999;}
+  </style>
+</head>
+<body>
+<div class="mobile-frame">
+<div class="app">
+  <!-- 小程序：得分区 -->
+  <div class="scoreZone">
+    <div class="scoreLeft">
+      <span class="scoreLabel">得分</span>
+      <span class="scoreValue" id="scoreValue">100/100</span>
+    </div>
+    <div class="scoreRight">一杆进缝不扣分 · 失败扣10分</div>
+  </div>
+
+  <!-- 小程序：游戏主画布（蓝边边框） -->
+  <div class="stageWrap">
+    <canvas id="c"></canvas>
+  </div>
+
+  <!-- 小程序：状态栏 -->
+  <div class="statusBar">
+    <div class="levelInfo">第<span class="current" id="currentRow">1</span>/12层</div>
+    <div class="hintText">长按积攒弹力，松开释放</div>
+    <div class="levelInfo" id="attemptInfo">准备出杆</div>
+  </div>
+
+  <!-- 小程序：控制按钮区 -->
+  <div class="controls">
+    <div class="btnArea"><div class="pad" id="padL" data-dir="左"></div><div class="label">左弹簧</div></div>
+    <button class="resetBtn" id="resetBtn">重新开始</button>
+    <div class="btnArea"><div class="pad" id="padR" data-dir="右"></div><div class="label">右弹簧</div></div>
+  </div>
+</div>
+</div>
+<script>
+(() => {
+  const canvas = document.getElementById("c");
+  const ctx    = canvas.getContext("2d");
+  const padL   = document.getElementById("padL");
+  const padR   = document.getElementById("padR");
+  const resetBtn = document.getElementById("resetBtn");
+
+  const ROWS          = 12;
+  const CHARGE_MAX_MS = 1500;
+  const FRICTION_FAST = 0.982;
+  const FRICTION_SLOW = 0.88;
+  const SLOW_THRESH   = 18;
+  const WALL_REST     = 0.72;
+  const SPRING_REST   = 0.76;
+  const GRAVITY       = 3200;
+  const STOP_EPS      = 1.2;
+
+  let DPR = 1, W = 0, H = 0, L = {};
+
+  function buildLayout() {
+    const wrap = document.querySelector(".stageWrap");
+    const rect = wrap.getBoundingClientRect();
+    DPR = Math.min(3, window.devicePixelRatio || 1);
+    const maxCanvasCssW = 520;
+    const cssW = Math.max(1, Math.min(rect.width, maxCanvasCssW));
+    const cssH = Math.max(1, rect.height);
+    W   = Math.floor(cssW * DPR);
+    H   = Math.floor(cssH * DPR);
+    canvas.width = W;
+    canvas.height = H;
+    canvas.style.width = cssW + "px";
+    canvas.style.height = cssH + "px";
+    const pLR = 16*DPR, pTop = 14*DPR, pBot = 14*DPR;
+    const railL = pLR, railR = W-pLR, railW = railR-railL;
+    const rowH  = (H - pTop - pBot) / (ROWS+1);
+    const y0    = pTop + rowH;
+    const rBall = Math.max(8*DPR, Math.min(12*DPR, railW*0.019));
+    const gapW  = rBall * 3.3;
+    const marginFromWall = rBall * 3.8;
+    const exitW = rBall*2.8, exitInset = rBall*0.6;
+    const gongR = rBall*1.25;
+    const gongX = railR - exitInset - gongR;
+    const gongY = y0 + (ROWS-1)*rowH;
+    const springNatLen = rBall*4.4, springAnchorOff = rBall*0.9;
+    // 高摩擦区域：每行中间，宽度约4倍球径，摩擦力更强（滑行距离短）
+    const sandW = rBall * 4.2;
+    L = { railL,railR,railW,pTop,pBot,y0,rowH,rBall,gapW,
+          marginFromWall,exitW,exitInset,gongR,gongX,gongY,
+          springNatLen,springAnchorOff,sandW };
+  }
+
+  const floorY = i => L.y0 + i*L.rowH;
+  const ballY  = i => floorY(i) - L.rBall;
+
+  let gaps = [];
+  let sandZones = []; // 每行的高摩擦区域中心位置
+  let ramps = []; // 坡度数组，每局3个
+  let nails = []; // 钉子数组，每行一个（除最后一行）
+  function randomizeGaps() {
+    const {railL,railR,marginFromWall,gapW,rBall} = L;
+    const lo = railL+marginFromWall+gapW/2;
+    const hi = railR-marginFromWall-gapW/2;
+    gaps = Array.from({length:ROWS}, ()=>({ xc: lo+Math.random()*(hi-lo) }));
+    // 高摩擦区域：放在缝隙的一侧（不盖住缝隙）
+    sandZones = gaps.map((gap, i) => {
+      // 随机选择缝隙左侧或右侧
+      const side = Math.random() < 0.5 ? -1 : 1;
+      // 随机摩擦力区域宽度（2.5倍到5.5倍球径）
+      const minW = rBall * 2.5;
+      const maxW = rBall * 5.5;
+      const zoneW = minW + Math.random() * (maxW - minW);
+      // 放在缝隙旁边，距离缝隙1-3倍球径
+      const offset = rBall * (1 + Math.random() * 2);
+      const targetX = gap.xc + side * (zoneW/2 + offset);
+      // 确保不超出边界
+      const clampedX = Math.max(railL + zoneW/2, Math.min(railR - zoneW/2, targetX));
+      // 随机摩擦力强度（0.3到1.0，越大摩擦力越强）
+      const strength = 0.3 + Math.random() * 0.7;
+      return {
+        xc: clampedX,
+        w: zoneW,
+        strength: strength
+      };
+    });
+
+    // 生成钉子：每一行都在下落路径中间放一个钉子（除了最后一行）
+    nails = [];
+    // 每一行（0到ROWS-2）都在缝隙正下方的下落路径中间放一个钉子
+    for (let row = 0; row < ROWS - 1; row++) {
+      const gap = gaps[row];
+      // 钉子放在两层之间的下落路径中间位置
+      const y = (ballY(row) + ballY(row + 1)) / 2;
+      nails.push({
+        row: row,        // 从这一行落下时会碰到
+        x: gap.xc,       // 在缝隙中心
+        y: y,            // 下落路径中间（两层之间）
+        r: rBall * 0.35  // 钉子半径0.35倍球径
+      });
+    }
+
+    // 生成3个坡度（随机行，避开最后一行）
+    ramps = [];
+    const availableRows = Array.from({length: ROWS-1}, (_, i) => i); // 0到ROWS-2
+    // 随机打乱并取前3个
+    for (let i = availableRows.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [availableRows[i], availableRows[j]] = [availableRows[j], availableRows[i]];
+    }
+    const rampRows = availableRows.slice(0, 3);
+
+    // 为每行生成坡度，确保恰好3个，且不覆盖缝隙、不与沙地区域重叠
+    for (const row of rampRows) {
+      const gap = gaps[row];
+      const gapX = gap.xc;
+      const gapW = L.gapW; // 缝隙宽度
+      const sandZone = sandZones[row];
+      const sandX = sandZone ? sandZone.xc : gapX;
+      const sandW = sandZone ? sandZone.w : rBall * 4;
+      const rampW = rBall * 8; // 坡度宽度8倍球径
+      const minGap = rBall * 2; // 与缝隙/沙地的最小间距2倍球径
+
+      // 尝试放置坡度
+      let placed = false;
+      for (let tryCount = 0; tryCount < 20 && !placed; tryCount++) {
+        // 计算禁止区域（缝隙和沙地）
+        const gapLeft = gapX - gapW/2 - minGap;
+        const gapRight = gapX + gapW/2 + minGap;
+        const sandLeft = sandX - sandW/2 - minGap;
+        const sandRight = sandX + sandW/2 + minGap;
+
+        // 合并禁止区域
+        const forbidLeft = Math.min(gapLeft, sandLeft);
+        const forbidRight = Math.max(gapRight, sandRight);
+
+        // 计算可用安全区
+        // 左侧：railL + rampW/2 + 边距 到 forbidLeft - rampW/2
+        // 右侧：forbidRight + rampW/2 到 railR - rampW/2 - 边距
+        // 边距 = 道具包宽度 + 白球半径，确保有足够空间发射白球
+        const boxW = rBall * 3; // 道具包宽度
+        const sideMargin = boxW + rBall; // 边距：道具包宽度 + 白球半径
+        const safeLeftStart = railL + rampW/2 + sideMargin;
+        const safeLeftEnd = forbidLeft - rampW/2;
+        const safeRightStart = forbidRight + rampW/2;
+        const safeRightEnd = railR - rampW/2 - sideMargin;
+
+        let xc;
+        const canPlaceLeft = safeLeftEnd > safeLeftStart;
+        const canPlaceRight = safeRightEnd > safeRightStart;
+
+        if (canPlaceLeft && canPlaceRight) {
+          // 两侧都可以，随机选择
+          if (Math.random() < 0.5) {
+            xc = safeLeftStart + Math.random() * (safeLeftEnd - safeLeftStart);
+          } else {
+            xc = safeRightStart + Math.random() * (safeRightEnd - safeRightStart);
+          }
+        } else if (canPlaceLeft) {
+          xc = safeLeftStart + Math.random() * (safeLeftEnd - safeLeftStart);
+        } else if (canPlaceRight) {
+          xc = safeRightStart + Math.random() * (safeRightEnd - safeRightStart);
+        } else {
+          break; // 无空间
+        }
+
+        // 检查是否与已有坡度重叠（同一行）
+        let overlaps = false;
+        for (const existing of ramps) {
+          if (existing.row !== row) continue;
+          const dist = Math.abs(existing.xc - xc);
+          if (dist < (existing.w + rampW) * 0.6) {
+            overlaps = true;
+            break;
+          }
+        }
+
+        if (!overlaps) {
+          // 随机选择摩擦力模式
+          const frictionMode = Math.floor(Math.random() * 3);
+          const strength = 0.4 + Math.random() * 0.6;
+
+          ramps.push({
+            row: row,
+            xc: xc,
+            w: rampW,
+            h: rBall * 1.8,
+            slopeW: rampW * 0.4,
+            flatW: rampW * 0.2,
+            upStrength: frictionMode === 0 ? strength : 0,
+            flatStrength: frictionMode === 1 ? strength : 0,
+            downStrength: frictionMode === 2 ? strength : 0,
+            frictionMode: frictionMode
+          });
+          placed = true;
+        }
+      }
+    }
+
+    // 生成道具包：找平坦空地（无缝隙、坡度、沙地）
+    itemBoxes = [];
+    const boxW = rBall * 3; // 道具包宽度约3倍球径
+    for (let row = 0; row < ROWS - 1; row++) { // 最后一行不生成
+      const gap = gaps[row];
+      const gapLeft = gap.xc - gapW/2;
+      const gapRight = gap.xc + gapW/2;
+      const sandZone = sandZones[row];
+
+      // 找出该行所有的禁止区域（缝隙、沙地、坡度）
+      const forbiddenZones = [];
+      forbiddenZones.push({ left: gapLeft, right: gapRight }); // 缝隙
+      if (sandZone) {
+        forbiddenZones.push({ left: sandZone.xc - sandZone.w/2, right: sandZone.xc + sandZone.w/2 });
+      }
+      // 添加该行的坡度区域
+      for (const ramp of ramps) {
+        if (ramp.row === row) {
+          forbiddenZones.push({ left: ramp.xc - ramp.w/2, right: ramp.xc + ramp.w/2 });
+        }
+      }
+
+      // 在导轨范围内寻找可用的平坦区域
+      // 边距 = 道具包宽度的1.5倍 + 白球直径，确保有足够空间发射白球和弹簧
+      const sideMargin = boxW * 1.5 + rBall * 2;
+      let availableRanges = [];
+      let currentLeft = railL + sideMargin;
+
+      // 排序禁止区域
+      forbiddenZones.sort((a, b) => a.left - b.left);
+
+      for (const zone of forbiddenZones) {
+        if (zone.left - currentLeft >= boxW) {
+          availableRanges.push({ left: currentLeft, right: zone.left });
+        }
+        currentLeft = Math.max(currentLeft, zone.right + sideMargin);
+      }
+      // 检查最后一个区域到右边界（留出足够边距）
+      if (railR - sideMargin - currentLeft >= boxW) {
+        availableRanges.push({ left: currentLeft, right: railR - sideMargin });
+      }
+
+      // 如果有可用区域，随机选择一个位置放置道具包
+      if (availableRanges.length > 0) {
+        const range = availableRanges[Math.floor(Math.random() * availableRanges.length)];
+        const xc = (range.left + range.right) / 2;
+        itemBoxes.push({
+          row: row,
+          xc: xc,
+          w: boxW,
+          timer: Math.random() * 15, // 初始随机时间，0-15秒
+          lastState: 'A', // 上一帧状态，用于检测切换
+        });
+      }
+      // 如果没有空间，该行不生成道具包
+    }
+  }
+
+  const gs = {
+    row:0, bx:0, by:0, bvx:0, bvy:0,
+    falling:false, fallTime:0, fallY0:0, fallVx:0,
+    wx:0, wy:0, wvx:0, wvy:0, wExists:false,
+    springSide:"left", lastSpringSide:"left",
+    charging:false, chargeStart:0, chargeT:0, chargeSide:null,
+    winning:false, winT:0, lastTs:0,
+    // 计分系统
+    score:100,                // 初始满分100
+    rowAttempts:0,            // 当前行已尝试次数
+    penaltyApplied:false,     // 本次尝试是否已扣分（防止重复扣）
+    gameOver:false,           // 游戏失败状态
+    // 道具包系统
+    hasBoosted:false,         // 是否已触发加速
+    lastDir:1,                // 最后水平移动方向（1=右，-1=左）
+    // 落地保护帧计数器
+    landedCooldown:0,         // 刚落地后的保护帧数，防止立即触发maybeEndShot
+  };
+
+  function springAnchorX(side) {
+    // 弹簧紧贴画布左右边缘（0 和 W）
+    return side==="left" ? 0 : L.W;
+  }
+  function springFaceX(side, compress) {
+    const len = L.springNatLen - compress;
+    const ax  = springAnchorX(side);
+    return side==="left" ? ax+len : ax-len;
+  }
+  function whiteBallRestX(side, compress) {
+    const fx = springFaceX(side, compress);
+    return side==="left" ? fx+L.rBall : fx-L.rBall;
+  }
+
+  /**
+   * 弹簧侧判定：
+   * - 其他行：球在缝隙左 → 左簧，球在缝隙右 → 右簧
+   * - 最后一行（row=ROWS-1）：始终左簧，用白球把球推向右出口
+   */
+  function computeSpringSide() {
+    // 最后一行：始终左簧，球需要向右滚入出口
+    if (gs.row === ROWS - 1) return "left";
+    const gap = gaps[gs.row];
+    if (!gap) return gs.lastSpringSide;
+    const xc = gap.xc;
+    const dx = gs.bx - xc;
+    if (Math.abs(dx) < 0.01 * DPR) return gs.lastSpringSide;
+    return dx < 0 ? "left" : "right";
+  }
+  function refreshSpringSide() {
+    const s = computeSpringSide();
+    gs.springSide = s; gs.lastSpringSide = s;
+  }
+
+  /**
+   * 规则：黑球太贴墙时往中场推，留出弹簧+白球间距。
+   * 推完后若球心不在「当前层缝隙」可下落区间内，下落判定会永远失败——再把 bx 夹回缝里（与 tryFallThroughGap 一致）。
+   */
+  function clampBxIntoGapForFall() {
+    if (gs.falling || gs.row >= ROWS - 1) return false;
+    const {rBall, gapW} = L;
+    const gap = gaps[gs.row];
+    if (!gap) return false;
+    const xc = gap.xc;
+    const gl = gap.xc - gapW / 2;
+    const gr = gap.xc + gapW / 2;
+    const inset = rBall * 0.2;
+    let lo = gl + inset + 0.25 * DPR;
+    let hi = gr - inset - 0.25 * DPR;
+    if (lo >= hi) return false;
+    if (gs.bx < xc) {
+      hi = Math.min(hi, xc - 0.35 * DPR);
+    } else if (gs.bx > xc) {
+      lo = Math.max(lo, xc + 0.35 * DPR);
+    }
+    if (lo >= hi) return false;
+    let ch = false;
+    if (gs.bx < lo) { gs.bx = lo; ch = true; }
+    else if (gs.bx > hi) { gs.bx = hi; ch = true; }
+    return ch;
+  }
+
+  function clampBlackBallSpringRoom() {
+    const {rBall, railL, railR} = L;
+    const pad = 2 * rBall + rBall * 0.35 + 14 * DPR;
+
+    // 迭代调整位置，直到稳定
+    for (let i = 0; i < 20; i++) {
+      refreshSpringSide();
+      const wx0 = whiteBallRestX(gs.springSide, 0);
+      let targetBx = gs.bx;
+      let needsMove = false;
+
+      if (gs.springSide === "left") {
+        const minBx = wx0 + pad;
+        if (gs.bx < minBx) {
+          targetBx = minBx;
+          needsMove = true;
+        }
+      } else {
+        const maxBx = wx0 - pad;
+        if (gs.bx > maxBx) {
+          targetBx = maxBx;
+          needsMove = true;
+        }
+      }
+
+      if (!needsMove) break;
+
+      // 检查目标位置是否在斜坡上
+      // 如果在上坡段，移到平台顶部（最近的可站稳位置）
+      // 如果在下坡段，移到平台顶部或坡度外
+      let adjustedBx = targetBx;
+
+      for (const ramp of ramps) {
+        if (ramp.row !== gs.row) continue;
+
+        const xLeft = ramp.xc - ramp.w/2;
+        const xSlopeTopLeft = xLeft + ramp.slopeW;  // 上坡顶（平台左）
+        const xSlopeTopRight = xSlopeTopLeft + ramp.flatW;  // 平台右
+        const xRight = ramp.xc + ramp.w/2;
+
+        // 目标在上坡段：移到平台左边缘（最近的可站稳位置）
+        if (targetBx >= xLeft && targetBx < xSlopeTopLeft) {
+          adjustedBx = xSlopeTopLeft;  // 平台左边缘，可站稳
+          break;
+        }
+        // 目标在平台段：可以停留
+        else if (targetBx >= xSlopeTopLeft && targetBx <= xSlopeTopRight) {
+          adjustedBx = targetBx;  // 已经在平台上
+          break;
+        }
+        // 目标在下坡段：移到平台右边缘或更外
+        else if (targetBx > xSlopeTopRight && targetBx <= xRight) {
+          adjustedBx = xSlopeTopRight;  // 平台右边缘
+          break;
+        }
+      }
+
+      targetBx = adjustedBx;
+
+      // 应用位置，限制在边界内
+      gs.bx = Math.max(railL + rBall, Math.min(railR - rBall, targetBx));
+
+      // 如果位置没有实质改变，退出循环
+      if (Math.abs(gs.bx - targetBx) < 0.1) break;
+    }
+
+    refreshSpringSide();
+  }
+
+  function smoothstep(t){ t=Math.max(0,Math.min(1,t)); return t*t*(3-2*t); }
+  function lerp(a,b,t){ return a+(b-a)*t; }
+  function lerpColor(c1,c2,t){
+    const p = s=>parseInt(s.slice(1),16);
+    const a=p(c1),b=p(c2);
+    const r = (v,sh)=>(v>>sh)&255;
+    return `rgb(${Math.round(lerp(r(a,16),r(b,16),t))},${Math.round(lerp(r(a,8),r(b,8),t))},${Math.round(lerp(r(a,0),r(b,0),t))})`;
+  }
+
+  // 辅助函数：绘制圆角矩形
+  function roundRect(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.arcTo(x + width, y, x + width, y + radius, radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.arcTo(x + width, y + height, x + width - radius, y + height, radius);
+    ctx.lineTo(x + radius, y + height);
+    ctx.arcTo(x, y + height, x, y + height - radius, radius);
+    ctx.lineTo(x, y + radius);
+    ctx.arcTo(x, y, x + radius, y, radius);
+    ctx.closePath();
+  }
+
+  function applyFriction(v, frictionStrength=0) {
+    let f = Math.abs(v) < SLOW_THRESH ? FRICTION_SLOW : FRICTION_FAST;
+    // 根据摩擦力强度调整摩擦系数
+    // strength 0.3-1.0，摩擦力增强 10%-35%
+    if (frictionStrength > 0) {
+      const frictionMultiplier = 1 - (0.1 + frictionStrength * 0.25);
+      f *= frictionMultiplier;
+    }
+    const nv = v * f;
+    return Math.abs(nv) < STOP_EPS*0.05 ? 0 : nv;
+  }
+
+  // 应用坡度重力（让球在坡上自然滑下）
+  function applyRampGravity(bx, row, vx) {
+    const rampInfo = getRampInfo(bx, row);
+    if (rampInfo.heightOffset === 0) return vx; // 不在坡上
+
+    // 找到当前坡度以确定方向
+    for (const ramp of ramps) {
+      if (ramp.row !== row) continue;
+      const xLeft = ramp.xc - ramp.w/2;
+      const xSlopeTopLeft = xLeft + ramp.slopeW;
+      const xSlopeTopRight = xSlopeTopLeft + ramp.flatW;
+      const xRight = ramp.xc + ramp.w/2;
+
+      // 上坡段：重力向左下（减速或回退）
+      if (bx >= xLeft && bx < xSlopeTopLeft) {
+        // 坡度角：上升 ramp.h 需要移动 slopeW
+        const slopeRatio = ramp.h / ramp.slopeW;
+        // 重力分量向左（下坡方向）
+        const gravityForce = -GRAVITY * DPR * slopeRatio * 0.5;
+        return vx + gravityForce * 0.016; // 假设60fps，约0.016秒每帧
+      }
+      // 下坡段：重力向右下（加速）
+      if (bx >= xSlopeTopRight && bx < xRight) {
+        const slopeRatio = ramp.h / ramp.slopeW;
+        const gravityForce = GRAVITY * DPR * slopeRatio * 0.5;
+        return vx + gravityForce * 0.016;
+      }
+      // 平台段：无明显重力影响，只有摩擦力
+    }
+    return vx;
+  }
+
+  // 检测球是否在高摩擦区域，返回摩擦力强度（0-1），不在区域内返回0
+  function getSandFrictionStrength(bx, row) {
+    const zone = sandZones[row];
+    if (!zone) return 0;
+    const halfW = zone.w / 2;
+    if (bx > zone.xc - halfW && bx < zone.xc + halfW) {
+      return zone.strength; // 返回该区域的摩擦力强度
+    }
+    return 0;
+  }
+
+  // 检测球是否在坡度上，返回对应段的摩擦力强度和高度偏移
+  function getRampInfo(bx, row) {
+    for (const ramp of ramps) {
+      if (ramp.row !== row) continue;
+
+      // 计算三段边界（对称坡度）
+      const xLeft = ramp.xc - ramp.w/2;           // 左端（坡底）
+      const xSlopeTopLeft = xLeft + ramp.slopeW;  // 上坡顶/平台左
+      const xSlopeTopRight = xSlopeTopLeft + ramp.flatW;  // 平台右/下坡顶
+      const xRight = ramp.xc + ramp.w/2;          // 右端（坡底）
+
+      // 上坡段（从左底到坡顶）
+      if (bx >= xLeft && bx < xSlopeTopLeft) {
+        const progress = (bx - xLeft) / ramp.slopeW;  // 0到1
+        const height = -ramp.h * progress;  // 负值表示向上（Y减小）
+        return { strength: ramp.upStrength, heightOffset: height };
+      }
+      // 平台段
+      if (bx >= xSlopeTopLeft && bx < xSlopeTopRight) {
+        return { strength: ramp.flatStrength, heightOffset: -ramp.h };
+      }
+      // 下坡段（从坡顶到右底）
+      if (bx >= xSlopeTopRight && bx < xRight) {
+        const progress = (bx - xSlopeTopRight) / ramp.slopeW;  // 0到1
+        const height = -ramp.h * (1 - progress);  // 从坡顶降到底
+        return { strength: ramp.downStrength, heightOffset: height };
+      }
+    }
+    return { strength: 0, heightOffset: 0 };
+  }
+
+  // 获取坡度摩擦力强度（兼容旧代码）
+  function getRampFrictionStrength(bx, row) {
+    return getRampInfo(bx, row).strength;
+  }
+
+  // 获取球在坡度上的Y坐标偏移（用于绘制）
+  function getRampHeightOffset(bx, row) {
+    return getRampInfo(bx, row).heightOffset;
+  }
+
+  function resolveWalls(x, v) {
+    const {railL,railR,rBall} = L;
+    if (x-rBall < railL){ x=railL+rBall; v= Math.abs(v)*WALL_REST; }
+    if (x+rBall > railR){ x=railR-rBall; v=-Math.abs(v)*WALL_REST; }
+    return [x,v];
+  }
+
+  /**
+   * 弹簧端面 = 竖直挡板。必须区分「球心在端面哪一侧」，否则会误伤发射中的白球：
+   * 左簧发射时白球在 fx 右侧且 v>0，若写成「只要 x+rBall>fx 且 v>0」会把球弹回墙内。
+   */
+  function resolveSpringWall(x, v, side) {
+    if (gs.charging) return [x,v];
+    const fx = springFaceX(side, 0);
+    const {rBall} = L;
+    if (side === "left") {
+      if (x > fx && x - rBall < fx && v < 0) {
+        x = fx + rBall;
+        v = Math.abs(v) * SPRING_REST;
+      } else if (x < fx && x + rBall > fx && v > 0) {
+        x = fx - rBall;
+        v = -Math.abs(v) * SPRING_REST;
+      }
+    } else {
+      if (x < fx && x + rBall > fx && v > 0) {
+        x = fx - rBall;
+        v = -Math.abs(v) * SPRING_REST;
+      } else if (x > fx && x - rBall < fx && v < 0) {
+        x = fx + rBall;
+        v = Math.abs(v) * SPRING_REST;
+      }
+    }
+    return [x,v];
+  }
+
+  /**
+   * 等质量、一维完全弹性：正面对心时白球会把速度交给黑球而自身停下（动量守恒）。
+   * 侧视单轨玩法里玩家普遍期待「母球会弹回」——与纯一维模型不同，真实台面是斜碰。
+   * 在法向弹性冲量之后，给白球沿 -n 方向的额外回弹分量，模拟母球带走的反向分速度。
+   */
+  const BALL_RESTITUTION = 1;
+  const CUE_REBOUND = 0.38;
+
+  // 获取球的世界坐标（考虑坡度高度）
+  function getBallWorldPos(bx, row, isFalling) {
+    const baseY = ballY(row);
+    if (isFalling) return { x: bx, y: baseY };
+    const rampOffset = getRampHeightOffset(bx, row);
+    return { x: bx, y: baseY + rampOffset };
+  }
+
+  // 扫掠碰撞检测：处理高速白球穿过黑球的情况（tunneling）
+  function resolveCollisionSwept(prevWx) {
+    if (!gs.wExists || gs.falling) return;
+    const {rBall} = L;
+
+    // 获取当前世界坐标（考虑坡度高度）
+    const whitePos = getBallWorldPos(gs.wx, gs.row, false);
+    const blackPos = getBallWorldPos(gs.bx, gs.row, false);
+    const prevWhitePos = getBallWorldPos(prevWx, gs.row, false);
+
+    // 计算3D距离（考虑高度差）
+    const dx = blackPos.x - whitePos.x;
+    const dy = blackPos.y - whitePos.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+
+    // 如果当前位置已碰撞（3D距离小于2倍半径），直接处理
+    if (dist < 2 * rBall) {
+      resolveCollisionDirect3D(whitePos, blackPos);
+      return;
+    }
+
+    // 扫掠检测：检查白球从 prevWx 到 currWx 的路径是否穿过黑球（3D）
+    const vx = whitePos.x - prevWhitePos.x;  // 白球本帧位移
+    const vy = whitePos.y - prevWhitePos.y;
+    const moveDist = Math.sqrt(vx*vx + vy*vy);
+
+    if (moveDist < 2 * rBall) return;  // 速度不够快，不需要扫掠检测
+
+    // 检查白球路径是否与黑球相交（3D球体碰撞）
+    // 使用线段与球的最短距离检测
+    const pathStart = prevWhitePos;
+    const pathEnd = whitePos;
+
+    // 计算黑球到白球路径线段的最短距离
+    const closestPoint = closestPointOnSegment(blackPos, pathStart, pathEnd);
+    const distToPath = distance3D(blackPos, closestPoint);
+
+    if (distToPath < 2 * rBall) {
+      // 扫掠碰撞发生！
+      // 计算碰撞法线（从黑球指向白球路径最近点）
+      const nx = (closestPoint.x - blackPos.x) / Math.max(distToPath, 1e-6);
+
+      // 将白球放在碰撞点外侧
+      gs.wx = blackPos.x - nx * 2 * rBall * 0.98;
+      // 黑球稍微反弹
+      gs.bx += nx * rBall * 0.3;
+
+      // 应用碰撞冲量
+      const wvx0 = gs.wvx, bvx0 = gs.bvx;
+      const vrelN = (wvx0 - bvx0) * nx;
+      if (vrelN > 0) {
+        const j = -(1 + BALL_RESTITUTION) * vrelN * 0.5;
+        gs.wvx += j * nx;
+        gs.bvx -= j * nx;
+        gs.wvx += CUE_REBOUND * vrelN * (-nx);
+      }
+    }
+  }
+
+  // 计算点到线段上的最近点
+  function closestPointOnSegment(p, a, b) {
+    const ab = { x: b.x - a.x, y: b.y - a.y };
+    const ap = { x: p.x - a.x, y: p.y - a.y };
+    const abLen2 = ab.x*ab.x + ab.y*ab.y;
+
+    if (abLen2 < 1e-10) return a;  // 线段退化为点
+
+    let t = (ap.x*ab.x + ap.y*ab.y) / abLen2;
+    t = Math.max(0, Math.min(1, t));  // 限制在线段内
+
+    return {
+      x: a.x + t * ab.x,
+      y: a.y + t * ab.y
+    };
+  }
+
+  // 计算3D距离
+  function distance3D(a, b) {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return Math.sqrt(dx*dx + dy*dy);
+  }
+
+  // 直接碰撞处理3D版本（考虑坡度高度）
+  function resolveCollisionDirect3D(whitePos, blackPos) {
+    if (!gs.wExists || gs.falling) return;
+    const {rBall} = L;
+
+    const dx = blackPos.x - whitePos.x;
+    const dy = blackPos.y - whitePos.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+
+    if (dist >= 2 * rBall) return;
+
+    const nx = dx / Math.max(dist, 1e-6);
+    const overlap = 2 * rBall - dist + 0.35 * DPR;
+
+    // 只在X轴分离（保持高度）
+    gs.wx -= nx * overlap * 0.5;
+    gs.bx += nx * overlap * 0.5;
+
+    const wvx0 = gs.wvx, bvx0 = gs.bvx;
+    const vrelN = (wvx0 - bvx0) * nx;
+    if (vrelN <= 0) return;
+
+    const j = -(1 + BALL_RESTITUTION) * vrelN * 0.5;
+    gs.wvx += j * nx;
+    gs.bvx -= j * nx;
+    gs.wvx += CUE_REBOUND * vrelN * (-nx);
+  }
+
+  // 保持向后兼容的直接碰撞检测
+  function resolveCollisionDirect() {
+    if (!gs.wExists || gs.falling) return;
+    const whitePos = getBallWorldPos(gs.wx, gs.row, false);
+    const blackPos = getBallWorldPos(gs.bx, gs.row, false);
+    resolveCollisionDirect3D(whitePos, blackPos);
+  }
+
+  // 保持向后兼容
+  function resolveCollision() {
+    resolveCollisionDirect();
+  }
+
+  // ========== 道具包系统 ==========
+  const SPRING_TRIGGER_RANGE = 1.2; // 1.2倍球径触发弹簧
+  const SPRING_ACTIVE_MS = 300; // 300ms活跃窗口
+  const SPRING_POP_VELOCITY = -1200; // 向上弹起速度（负Y方向）
+  const BOOST_RANGE = 3.0; // 3倍球径加速轨道范围
+
+  // 更新道具包计时器和弹簧触发状态
+  function updateItemBoxes(dt) {
+    const now = performance.now();
+
+    for (const box of itemBoxes) {
+      // 初始化状态字段
+      if (box.springActive === undefined) box.springActive = false;
+      if (box.springEndTime === undefined) box.springEndTime = 0;
+      if (box.poppedBalls === undefined) box.poppedBalls = new Set();
+
+      // 更新计时器
+      box.timer += dt;
+      if (box.timer >= 15) {
+        box.timer = 0;
+        box.springActive = false;
+        box.poppedBalls.clear();
+      }
+
+      const phase = box.timer % 15;
+      const isStateB = phase >= 5; // 5-15秒是弹簧状态
+
+      if (isStateB && (box.row === gs.row || (gs.wExists && box.row === gs.wRow))) {
+        // 弹簧状态：检查球是否接近触发
+        const triggerDist = L.rBall * SPRING_TRIGGER_RANGE;
+
+        // 黑球触发检测（必须在地面上，且道具包在黑球所在行）
+        const blackOnGround = !gs.falling && Math.abs(gs.bvy) < 50;
+        const blackDist = Math.abs(gs.bx - box.xc);
+        const blackCanTrigger = blackOnGround && blackDist < triggerDist && box.row === gs.row;
+
+        // 白球触发检测（必须在地面上且存在，且道具包在白球所在行）
+        const whiteOnGround = gs.wExists && !gs.falling && Math.abs(gs.wvy) < 50;
+        const whiteDist = gs.wExists ? Math.abs(gs.wx - box.xc) : Infinity;
+        const whiteCanTrigger = whiteOnGround && whiteDist < triggerDist && box.row === gs.wRow;
+
+        // 触发弹簧：球接近时开启300ms活跃窗口
+        if ((blackCanTrigger || whiteCanTrigger) && !box.springActive) {
+          box.springActive = true;
+          box.springEndTime = now + SPRING_ACTIVE_MS;
+          box.poppedBalls.clear();
+        }
+      } else if (!isStateB) {
+        // 状态A时关闭弹簧
+        box.springActive = false;
+      }
+
+      // 检查活跃窗口是否过期
+      if (box.springActive && now >= box.springEndTime) {
+        box.springActive = false;
+      }
+    }
+  }
+
+  // 应用弹簧物理效果：强制赋予向上速度（当前层内弹跳，不下落）
+  function applySpringForces() {
+    const now = performance.now();
+    const popV = SPRING_POP_VELOCITY * DPR;
+    const triggerDist = L.rBall * 1.5; // 统一使用1.5倍球径作为触发范围
+
+    for (const box of itemBoxes) {
+      // 检查道具包是否对黑球或白球有效（可能在不同层）
+      const blackCanHit = box.row === gs.row;
+      const whiteCanHit = gs.wExists && box.row === gs.wRow;
+      if (!blackCanHit && !whiteCanHit) continue;
+      if (!box.springActive) continue;
+      if (now >= box.springEndTime) continue;
+
+      // 黑球弹簧效果：赋予向上速度（当前层内弹跳）
+      if (blackCanHit) {
+        const blackDist = Math.abs(gs.bx - box.xc);
+        if (blackDist < triggerDist && !box.poppedBalls.has('b')) {
+          gs.bvy = popV; // 强制向上速度，绝不为0！
+          box.poppedBalls.add('b');
+          // 不进入falling模式，保持当前层
+        }
+      }
+
+      // 白球弹簧效果：与黑球完全一致的判定范围和物理效果
+      if (gs.wExists && whiteCanHit) {
+        const whiteDist = Math.abs(gs.wx - box.xc);
+        if (whiteDist < triggerDist && !box.poppedBalls.has('w')) {
+          gs.wvy = popV; // 强制向上速度，绝不为0！
+          box.poppedBalls.add('w');
+          // 白球同样在当前层内弹跳
+        }
+      }
+    }
+  }
+
+  // 更新垂直弹跳物理（当前层内）
+  function updateVerticalBounce(dt) {
+    const g = GRAVITY * DPR;
+    const {rBall, rowH} = L;
+    const floorY = ballY(gs.row); // 当前行地面高度
+    const ceilingY = floorY - rowH * 0.85; // 天花板：上一行地面下方一点（留出层间距）
+
+    // 黑球垂直运动
+    if (Math.abs(gs.bvy) > 1 || gs.by < floorY - 1) {
+      // 应用重力
+      gs.bvy += g * dt;
+      gs.by += gs.bvy * dt;
+
+      // 天花板碰撞：不能超过当前层顶部
+      if (gs.by < ceilingY + rBall) {
+        gs.by = ceilingY + rBall;
+        gs.bvy = Math.abs(gs.bvy) * 0.3; // 向下反弹，能量损失
+      }
+
+      // 地面碰撞：回到当前行地面
+      if (gs.by >= floorY) {
+        gs.by = floorY;
+        gs.bvy = 0; // 停止垂直运动
+      }
+    } else {
+      // 垂直速度很小，直接接地
+      gs.by = floorY;
+      gs.bvy = 0;
+    }
+
+    // 白球垂直运动（与黑球完全一致）
+    if (gs.wExists) {
+      if (Math.abs(gs.wvy) > 1 || gs.wy < floorY - 1) {
+        // 应用重力
+        gs.wvy += g * dt;
+        gs.wy += gs.wvy * dt;
+
+        // 天花板碰撞
+        if (gs.wy < ceilingY + rBall) {
+          gs.wy = ceilingY + rBall;
+          gs.wvy = Math.abs(gs.wvy) * 0.3; // 向下反弹
+        }
+
+        // 地面碰撞
+        if (gs.wy >= floorY) {
+          gs.wy = floorY;
+          gs.wvy = 0;
+        }
+      } else {
+        gs.wy = floorY;
+        gs.wvy = 0;
+      }
+    }
+  }
+
+  // 应用加速轨道效果（状态A）
+  function applyBoostEffects(dt) {
+    const boostDist = L.rBall * BOOST_RANGE;
+
+    for (const box of itemBoxes) {
+      if (box.row !== gs.row) continue;
+
+      const phase = box.timer % 15;
+      const isStateA = phase < 5;
+      if (!isStateA) continue;
+
+      // 黑球加速
+      const blackDist = Math.abs(gs.bx - box.xc);
+      const blackOnGround = !gs.falling && Math.abs(gs.bvy) < 50;
+      if (blackDist < boostDist && blackOnGround && !gs.hasBoosted) {
+        if (Math.abs(gs.bvx) < 0.1) {
+          gs.bvx = L.railW * 0.2 * (gs.lastDir || 1);
+        } else {
+          gs.bvx *= 2;
+        }
+        gs.hasBoosted = true;
+      }
+
+      // 白球加速
+      if (gs.wExists) {
+        const whiteDist = Math.abs(gs.wx - box.xc);
+        const whiteOnGround = !gs.falling && Math.abs(gs.wvy) < 50;
+        if (whiteDist < boostDist && whiteOnGround && !gs.hasBoosted) {
+          if (Math.abs(gs.wvx) < 0.1) {
+            gs.wvx = L.railW * 0.2 * (gs.lastDir || 1);
+          } else {
+            gs.wvx *= 2;
+          }
+          gs.hasBoosted = true;
+        }
+      }
+    }
+  }
+
+  // 检查是否离开所有道具包，重置加速标记
+  function resetBoostIfLeftBoxes() {
+    const boostDist = L.rBall * BOOST_RANGE;
+    let inAnyBoostBox = false;
+
+    for (const box of itemBoxes) {
+      const phase = box.timer % 15;
+      if (phase >= 5) continue; // 只检查状态A
+
+      // 黑球在白球所在层的道具包中？
+      const blackInBox = box.row === gs.row && Math.abs(gs.bx - box.xc) < boostDist;
+      // 白球在白球所在层的道具包中？
+      const whiteInBox = gs.wExists && box.row === gs.wRow && Math.abs(gs.wx - box.xc) < boostDist;
+
+      if (blackInBox || whiteInBox) {
+        inAnyBoostBox = true;
+        break;
+      }
+    }
+
+    if (!inAnyBoostBox) {
+      gs.hasBoosted = false;
+    }
+  }
+
+  // 更新最后移动方向（用于静止时的加速方向兜底）
+  function updateLastDir() {
+    if (Math.abs(gs.bvx) > 0.1) {
+      gs.lastDir = gs.bvx > 0 ? 1 : -1;
+    }
+  }
+
+  // ── GAP FALL: check FIRST each frame, skip all wall resolution if triggered ──
+  /**
+   * 本帧位移前球心 prevBx → 位移后 gs.bx。
+   * 若速度太快（|bvx| > vSkip），抛物线会跳过缝隙，直接飞过不下落。
+   * 速度适中时，球心落在 (lo,hi) 内或扫过区间，则正常下落。
+   */
+  function tryFallThroughGap(prevBx) {
+    if (gs.falling || gs.row >= ROWS - 1) return false;
+    const {rBall,gapW,rowH} = L;
+    const gap = gaps[gs.row];
+    const gl  = gap.xc - gapW/2;
+    const gr  = gap.xc + gapW/2;
+
+    const inset = rBall * 0.2;
+    const lo = gl + inset;
+    const hi = gr - inset;
+    if (lo >= hi) return false;
+
+    // 计算"跳过"速度阈值：v > gapW / sqrt(2*rowH/g)
+    // 超过此速度，抛物线轨迹会跳过缝隙，球直接飞过不下落
+    const g = GRAVITY * DPR;
+    const fallTime = Math.sqrt(2 * rowH / g);
+    const vSkip = (gapW / fallTime) * 1.15; // 留15%余量
+
+    // 速度太快 → 跳过缝隙（飞过不下落）
+    if (Math.abs(gs.bvx) > vSkip) {
+      return false;
+    }
+
+    const bx = gs.bx;
+    const inside = bx > lo && bx < hi;
+    let swept = false;
+    if (typeof prevBx === "number" && isFinite(prevBx)) {
+      const smin = Math.min(prevBx, bx);
+      const smax = Math.max(prevBx, bx);
+      swept = smax > lo && smin < hi;
+    }
+    if (!inside && !swept) return false;
+
+    if (swept && !inside) {
+      const smin = Math.min(prevBx, bx);
+      const smax = Math.max(prevBx, bx);
+      const a = Math.max(smin, lo);
+      const b = Math.min(smax, hi);
+      let sx = (a + b) * 0.5;
+      const eps = 0.02 * DPR;
+      gs.bx = Math.max(lo + eps, Math.min(hi - eps, sx));
+    }
+
+    gs.falling  = true;
+    gs.fallTime = 0;
+    gs.fallY0   = ballY(gs.row);
+    gs.fallVx   = gs.bvx;
+    gs.fallV0   = 0; // 缝隙下落：初始垂直速度为0
+    gs.bvx      = 0;
+    return true;
+  }
+
+  /**
+   * 触发弹簧弹起抛物线运动
+   * 当弹簧赋予球向上速度时调用
+   */
+  function triggerSpringFall(vy) {
+    if (gs.falling || gs.row >= ROWS - 1) return false;
+    gs.falling = true;
+    gs.fallTime = 0;
+    gs.fallY0 = ballY(gs.row);
+    gs.fallVx = gs.bvx * 0.8; // 保持大部分水平速度
+    gs.fallV0 = vy; // 初始垂直速度（弹簧赋予的向上速度）
+    gs.bvx = 0;
+    return true;
+  }
+
+  /**
+   * 不再对缝隙左右缘做「立柱反弹」：否则会把球钉在 gl-rBall / gr+rBall，
+   * 球心永远无法进入缝隙区间，tryFallThroughGap 永远不会触发（表现为黑球过不了缝）。
+   * 进缝、过缝、快滚跳过 全部由 tryFallThroughGap + 抛物线下落处理即可。
+   */
+
+  function updateFall(dt) {
+    if (gs.row >= ROWS - 1) {
+      gs.falling = false;
+      gs.bvy = 0;
+      return ballY(gs.row);
+    }
+
+    gs.fallTime += dt;
+    const g = GRAVITY * DPR;
+    const {railL,railR,rBall,rowH} = L;
+
+    // 使用完整的抛体运动公式：y = y0 + v0*t + 0.5*g*t^2
+    // 支持初始向上速度（弹簧弹起）或向下速度
+    const v0 = gs.fallV0 || 0; // 初始垂直速度（弹簧弹起时为负值）
+    const y = gs.fallY0 + v0 * gs.fallTime + 0.5 * g * gs.fallTime * gs.fallTime;
+
+    // 钉子碰撞检测（仅下落过程中，且球在钉子附近Y坐标时）
+    const nail = nails.find(n => n.row === gs.row);
+    if (nail && !gs.nailHit) {
+      const dx = gs.bx - nail.x;
+      const dy = y - nail.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < rBall + nail.r) {
+        gs.nailHit = true;
+        const bounceDir = dx < 0 ? -1 : 1;
+        const bounceForce = (L.railW * 0.6 + Math.random() * L.railW * 0.4) * bounceDir;
+        gs.fallVx = bounceForce;
+        // 钉子碰撞给一个向上的冲量
+        gs.fallTime = 0;
+        gs.fallY0 = y;
+        gs.fallV0 = -Math.abs(v0) * 0.5 - L.railW * 0.3; // 向上反弹
+      }
+    }
+
+    // 水平墙壁碰撞
+    gs.bx += gs.fallVx * dt;
+    if (gs.bx-rBall < railL){ gs.bx=railL+rBall; gs.fallVx= Math.abs(gs.fallVx)*WALL_REST; }
+    if (gs.bx+rBall > railR){ gs.bx=railR-rBall; gs.fallVx=-Math.abs(gs.fallVx)*WALL_REST; }
+
+    // 落地判定：落到下一行的高度
+    const nextRow = Math.min(gs.row + 1, ROWS - 1);
+    const targetY = ballY(nextRow);
+
+    // 只有当球落到目标行高度以下，且垂直速度向下时才结束下落
+    const vy = v0 + g * gs.fallTime;
+
+    if (y >= targetY && vy > 0) {
+      gs.falling = false;
+      gs.row = Math.min(ROWS - 1, gs.row+1);
+      gs.nailHit = false;
+      gs.bx = Math.max(railL+rBall, Math.min(railR-rBall, gs.bx));
+
+      // 落地后保留水平速度，重置垂直速度
+      gs.bvx = gs.fallVx * 0.62;
+      gs.bvy = 0;
+      gs.fallTime = 0;
+      gs.fallV0 = 0;
+
+      console.log(`第${gs.row+1}行：成功落地！尝试${gs.rowAttempts}次`);
+      gs.rowAttempts = 0;
+      gs.penaltyApplied = false;
+      gs.landedCooldown = 5;  // 设置5帧保护期，防止立即触发maybeEndShot
+      return targetY;
+    }
+
+    return y;
+  }
+
+  function checkExit() {
+    if (gs.row !== ROWS - 1 || gs.winning) return;
+    const {railR,rBall,exitW,exitInset} = L;
+    const exitLeft = railR-exitInset-exitW;
+    if (gs.bvx>0 && gs.bx+rBall>exitLeft && gs.bx>railR-rBall*2.2) {
+      gs.winning=true; gs.winT=0;
+      gs.bvx=0; if(gs.wExists) gs.wvx=0;
+    }
+  }
+
+  function maybeEndShot() {
+    if (gs.winning || gs.falling) return;
+    if (Math.abs(gs.bvx) >= STOP_EPS) return;
+    if (gs.wExists && Math.abs(gs.wvx) >= STOP_EPS) return;
+    gs.bvx = 0;
+    gs.bvy = 0;  // 重置黑球垂直速度
+    if (gs.wExists){ gs.wvx=0; gs.wvy=0; gs.wExists=false; }  // 重置白球垂直速度
+    // 实时扣分：这次出杆没有落到缝隙，扣10分（只扣一次）
+    if (gs.rowAttempts > 0 && !gs.penaltyApplied) {
+      gs.score = Math.max(0, gs.score - 10);
+      gs.penaltyApplied = true;  // 标记已扣分，防止重复扣
+      console.log(`第${gs.row+1}行第${gs.rowAttempts}次尝试失败，扣分-10，当前分数：${gs.score}`);
+      // 分数扣完且未通关，判定失败（无论在哪个位置）
+      if (gs.score <= 0 && !gs.winning) {
+        gs.gameOver = true;
+        console.log("游戏失败！分数已耗尽");
+      }
+    }
+    clampBlackBallSpringRoom();
+    updatePads();
+  }
+
+  function fireWhiteBall(side, chargeT) {
+    let v0;
+    let compress;
+    const dir  = side==="left" ? 1 : -1;
+
+    if (chargeT <= 1) {
+      // 正常蓄力阶段（0-100%）
+      const t = smoothstep(chargeT);
+      const vMax = L.railW * 1.75;
+      v0 = vMax * (0.12 + 0.88 * t);
+      compress = L.springNatLen * 0.36 * t;
+    } else {
+      // 超充能阶段（>100%）：力量无上限增长
+      // 基础力量 + 超充能额外力量（二次增长，越往后越猛）
+      const overCharge = chargeT - 1;  // 超出100%的部分
+      const vMax = L.railW * 1.75;
+      const baseV = vMax;  // 基础最大力量
+      // 超充能：每多蓄100%，力量增加50%，且增长加速
+      const extraV = vMax * (0.5 * overCharge + 0.3 * overCharge * overCharge);
+      v0 = baseV + extraV;
+      // 弹簧压缩到极限后不再继续压缩（物理限制）
+      compress = L.springNatLen * 0.4;
+    }
+
+    gs.wx  = whiteBallRestX(side, compress);
+    gs.wy  = ballY(gs.row); // 初始化Y位置
+    gs.wvx = dir * v0;
+    gs.wvy = 0; // 初始垂直速度为0
+    gs.wExists = true;
+    // 计分：记录本次发射是当前行的第几次尝试
+    gs.rowAttempts++;
+    gs.penaltyApplied = false;  // 新的一次尝试，重置扣分标记
+  }
+
+  function isReady() {
+    return !gs.winning && !gs.gameOver && !gs.falling && !gs.charging &&
+           Math.abs(gs.bvx) < STOP_EPS && Math.abs(gs.bvy) < STOP_EPS &&
+           (!gs.wExists || (Math.abs(gs.wvx) < STOP_EPS && Math.abs(gs.wvy) < STOP_EPS));
+  }
+  function updatePads() {
+    const ready = isReady();
+    padL.classList.toggle("disabled", !(ready && gs.springSide==="left"));
+    padR.classList.toggle("disabled", !(ready && gs.springSide==="right"));
+  }
+
+  function startCharge(side) {
+    if (!isReady() || side!==gs.springSide) return;
+    gs.charging=true; gs.chargeSide=side;
+    gs.chargeStart=performance.now(); gs.chargeT=0;
+    (side==="left"?padL:padR).classList.add("pressing");
+    updatePads();
+  }
+  function endCharge() {
+    if (!gs.charging) return;
+    const side = gs.chargeSide;
+    gs.charging=false; gs.chargeSide=null;
+    padL.classList.remove("pressing"); padR.classList.remove("pressing");
+    fireWhiteBall(side, gs.chargeT);
+    gs.chargeT=0; gs.lastSpringSide=side;
+    updatePads();
+  }
+
+  function bindPad(el, side) {
+    el.addEventListener("pointerdown", e=>{ e.preventDefault(); el.setPointerCapture(e.pointerId); startCharge(side); }, {passive:false});
+    el.addEventListener("pointerup",   e=>{ e.preventDefault(); endCharge(); }, {passive:false});
+    el.addEventListener("pointercancel", ()=>endCharge());
+  }
+  bindPad(padL,"left"); bindPad(padR,"right");
+  resetBtn.addEventListener("click", resetGame);
+  window.addEventListener("resize", ()=>{ buildLayout(); resetGame(); });
+
+  function resetGame() {
+    buildLayout(); randomizeGaps();
+    Object.assign(gs, {
+      row:0, bx:0, by:0, bvx:0, bvy:0,
+      falling:false, fallTime:0, fallY0:0, fallVx:0, fallV0:0,
+      wx:0, wy:0, wvx:0, wvy:0, wExists:false,
+      charging:false, chargeT:0, chargeSide:null,
+      winning:false, winT:0, lastTs:0,
+      lastSpringSide:"left",
+      // 计分系统重置
+      score:100, rowAttempts:0, penaltyApplied:false, gameOver:false,
+      // 钉子碰撞标记
+      nailHit:false,
+      // 道具包系统重置
+      hasBoosted:false, lastDir:1,
+      // 落地保护帧计数器重置
+      landedCooldown:0,
+    });
+    // 初始位置：紧贴左墙，远离所有缝隙（缝隙最左在 railL + 5.45*rBall 处）
+    gs.bx = L.railL + L.rBall * 1.5;
+    gs.by = ballY(0); // 初始化黑球Y位置
+    gs.wy = ballY(0); // 初始化白球Y位置
+    refreshSpringSide();
+    updatePads();
+    updateStatusUI(); // 小程序：初始化UI状态
+  }
+
+  function drawSpring(side, cy, chargeT) {
+    const {springNatLen,springAnchorOff,rBall} = L;
+    const t  = smoothstep(chargeT);
+    const compress = springNatLen*0.36*t;
+    const natLen   = springNatLen - compress;
+    const ax  = springAnchorX(side);
+    const fx  = springFaceX(side, compress);
+    const dir = side==="left" ? 1 : -1;
+
+    ctx.save();
+
+    // 弹簧颜色：蓄力时变橙色，否则灰色
+    const col = lerpColor("#CECECE","#F39A2E",t);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.1 * DPR;
+    ctx.lineCap = "round";
+
+    // 绘制固定端（墙边）
+    ctx.beginPath();
+    ctx.moveTo(ax, cy-rBall*0.72);
+    ctx.lineTo(ax, cy+rBall*0.72);
+    ctx.stroke();
+
+    // 绘制导向线
+    const ry = rBall*0.48*(1-0.42*t);
+    ctx.globalAlpha = 0.32;
+    ctx.beginPath();
+    ctx.moveTo(ax,cy-ry*0.55);
+    ctx.lineTo(fx,cy-ry*0.55);
+    ctx.moveTo(ax,cy+ry*0.55);
+    ctx.lineTo(fx,cy+ry*0.55);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // 绘制线圈（礼物盒弹簧风格）
+    const rings = 7;
+    const step = natLen/(rings+0.5);
+    const rx = step*0.45;
+    for (let i=1; i<=rings; i++) {
+      const cx = ax + dir*step*(i-0.5);
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
+      ctx.stroke();
+    }
+
+    // 绘制端面板
+    ctx.lineWidth = 2 * DPR;
+    const capH = rBall*0.86*(1-0.18*t);
+    ctx.beginPath();
+    ctx.moveTo(fx,cy-capH);
+    ctx.lineTo(fx,cy+capH);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function draw(blackDrawY) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle="#fff"; ctx.fillRect(0,0,W,H);
+    const {railL,railR,rBall,gapW,exitW,exitInset,gongR,gongX,gongY,pTop,pBot} = L;
+
+    // 绘制横线导轨（蓝线风格）- 延伸到画布最边缘（紧贴蓝边框）
+    for (let i=0;i<ROWS;i++) {
+      const fy=floorY(i), gap=gaps[i];
+      const gl=gap.xc-gapW/2, gr=gap.xc+gapW/2;
+      ctx.strokeStyle="#3A6FA8"; ctx.lineWidth=1.5*DPR;
+      ctx.beginPath();
+      if (i===ROWS-1) {
+        const el=railR-exitInset-exitW;
+        // 最后一行：横线延伸到画布最左边缘，到出口前
+        ctx.moveTo(0,fy); ctx.lineTo(el,fy); ctx.stroke();
+        // 出口标记
+        ctx.strokeStyle="#34C759";
+        ctx.lineWidth=2*DPR;
+        ctx.beginPath();
+        ctx.arc(el+exitW/2, fy-rBall, rBall*0.6, 0, Math.PI*2);
+        ctx.stroke();
+      } else {
+        // 横线延伸到画布最左边缘(0)和最右边缘(W)
+        ctx.moveTo(0,fy); ctx.lineTo(gl,fy);
+        ctx.moveTo(gr,fy); ctx.lineTo(W,fy);
+        ctx.stroke();
+      }
+    }
+    // 绘制高摩擦区域（沙地区域）- 蓝线梳状纹理（小程序UI规范）
+    for (let i=0;i<ROWS;i++) {
+      const zone = sandZones[i];
+      if (!zone) continue;
+      const fy = floorY(i);
+      const halfW = zone.w / 2;
+      const x1 = zone.xc - halfW;
+      const x2 = zone.xc + halfW;
+
+      // 蓝线梳状纹理（静态，固定5根线）
+      ctx.strokeStyle = `rgba(58,111,168,0.55)`; // #3A6FA8 带透明度
+      ctx.lineWidth = 1.5 * DPR;
+      const lineCount = 5; // 固定5根线，静态显示
+      const lineHeight = rBall * 0.7; // 跨行线上下各一半
+      for (let d=0; d<lineCount; d++) {
+        const dx = x1 + (x2-x1) * (d+0.5)/lineCount;
+        ctx.beginPath();
+        ctx.moveTo(dx, fy - lineHeight);
+        ctx.lineTo(dx, fy + lineHeight);
+        ctx.stroke();
+      }
+    }
+
+    // 绘制坡度（手绘风格三角形/梯形山丘）
+    for (const ramp of ramps) {
+      const fy = floorY(ramp.row);
+      const yBase = fy;
+      const yTop = fy - ramp.h;
+
+      // 三段边界
+      const xLeft = ramp.xc - ramp.w/2;           // 左端（坡底）
+      const xSlopeTopLeft = xLeft + ramp.slopeW;  // 上坡顶/平台左
+      const xSlopeTopRight = xSlopeTopLeft + ramp.flatW;  // 平台右/下坡顶
+      const xRight = ramp.xc + ramp.w/2;          // 右端（坡底）
+
+      // 判断哪个面摩擦力最大
+      const maxStrength = Math.max(ramp.upStrength, ramp.flatStrength, ramp.downStrength);
+      const upIsHigh = ramp.upStrength === maxStrength && maxStrength > 0;
+      const flatIsHigh = ramp.flatStrength === maxStrength && maxStrength > 0;
+      const downIsHigh = ramp.downStrength === maxStrength && maxStrength > 0;
+
+      // 基础颜色（暖土色）
+      const baseColor = "rgba(180,150,120,";
+      const shadowColor = "rgba(140,110,85,";
+
+      // 绘制整个坡度轮廓（手绘风格粗线条）
+      ctx.strokeStyle = "rgba(120,90,70,0.6)";
+      ctx.lineWidth = 2 * DPR;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      // 左侧斜坡（上坡面）- 较浅的填充
+      const upAlpha = upIsHigh ? 0.45 : 0.25;
+      ctx.fillStyle = baseColor + upAlpha + ")";
+      ctx.beginPath();
+      ctx.moveTo(xLeft, yBase);
+      ctx.lineTo(xSlopeTopLeft, yTop);
+      ctx.lineTo(xSlopeTopLeft, yBase);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // 平台顶面
+      const flatAlpha = flatIsHigh ? 0.45 : 0.25;
+      ctx.fillStyle = baseColor + flatAlpha + ")";
+      ctx.fillRect(xSlopeTopLeft, yTop, ramp.flatW, ramp.h);
+      ctx.beginPath();
+      ctx.moveTo(xSlopeTopLeft, yTop);
+      ctx.lineTo(xSlopeTopRight, yTop);
+      ctx.lineTo(xSlopeTopRight, yBase);
+      ctx.stroke();
+
+      // 右侧斜坡（下坡面）- 带阴影感的填充
+      const downAlpha = downIsHigh ? 0.45 : 0.25;
+      ctx.fillStyle = baseColor + downAlpha + ")";
+      ctx.beginPath();
+      ctx.moveTo(xSlopeTopRight, yTop);
+      ctx.lineTo(xRight, yBase);
+      ctx.lineTo(xSlopeTopRight, yBase);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // 绘制阴影/纹理线条（手绘风格）
+      ctx.strokeStyle = shadowColor + "0.4)";
+      ctx.lineWidth = 1 * DPR;
+
+      // 上坡面纹理（从左下到右上）
+      if (ramp.slopeW > rBall) {
+        const lines = Math.floor(ramp.slopeW / (rBall * 0.8));
+        for (let i = 1; i < lines; i++) {
+          const t = i / lines;
+          const x1 = xLeft + (xSlopeTopLeft - xLeft) * t;
+          const y1 = yBase - (yBase - yTop) * t;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x1 + rBall * 0.4, y1 - rBall * 0.6);
+          ctx.stroke();
+        }
+      }
+
+      // 下坡面纹理（从左上到右下）
+      if (ramp.slopeW > rBall) {
+        const lines = Math.floor(ramp.slopeW / (rBall * 0.8));
+        for (let i = 1; i < lines; i++) {
+          const t = i / lines;
+          const x1 = xSlopeTopRight + (xRight - xSlopeTopRight) * t;
+          const y1 = yTop + (yBase - yTop) * t;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x1 + rBall * 0.4, y1 + rBall * 0.6);
+          ctx.stroke();
+        }
+      }
+
+      // 摩擦力高的面添加额外阴影填充（深色斜线）
+      if (maxStrength > 0) {
+        ctx.strokeStyle = "rgba(100,70,50,0.35)";
+        ctx.lineWidth = 2 * DPR;
+
+        if (upIsHigh) {
+          // 上坡面加粗阴影线
+          for (let i = 0; i < 5; i++) {
+            const t = (i + 0.5) / 5;
+            const x1 = xLeft + (xSlopeTopLeft - xLeft) * t;
+            const y1 = yBase - (yBase - yTop) * t;
+            ctx.beginPath();
+            ctx.moveTo(x1 - rBall * 0.3, y1 + rBall * 0.3);
+            ctx.lineTo(x1 + rBall * 0.5, y1 - rBall * 0.5);
+            ctx.stroke();
+          }
+        } else if (flatIsHigh) {
+          // 平台面加粗阴影线
+          for (let i = 0; i < 3; i++) {
+            const y = yTop + ramp.h * (i + 0.5) / 3;
+            ctx.beginPath();
+            ctx.moveTo(xSlopeTopLeft + rBall * 0.2, y);
+            ctx.lineTo(xSlopeTopRight - rBall * 0.2, y);
+            ctx.stroke();
+          }
+        } else if (downIsHigh) {
+          // 下坡面加粗阴影线
+          for (let i = 0; i < 5; i++) {
+            const t = (i + 0.5) / 5;
+            const x1 = xSlopeTopRight + (xRight - xSlopeTopRight) * t;
+            const y1 = yTop + (yBase - yTop) * t;
+            ctx.beginPath();
+            ctx.moveTo(x1 - rBall * 0.3, y1 - rBall * 0.3);
+            ctx.lineTo(x1 + rBall * 0.5, y1 + rBall * 0.5);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // 顶部的棱线（强调立体感）
+      ctx.strokeStyle = "rgba(160,130,100,0.5)";
+      ctx.lineWidth = 1 * DPR;
+      ctx.beginPath();
+      ctx.moveTo(xSlopeTopLeft, yTop);
+      ctx.lineTo(xSlopeTopRight, yTop);
+      ctx.stroke();
+    }
+
+    // 绘制钉子（简洁的红色圆点）
+    const nailRadius = rBall * 0.3;
+    for (const nail of nails) {
+      const nx = nail.x;
+      const ny = nail.y;
+
+      // 简洁的红色圆点
+      ctx.fillStyle = "#FF453A";
+      ctx.beginPath();
+      ctx.arc(nx, ny, nailRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 轻微阴影增加立体感
+      ctx.fillStyle = "rgba(255,69,58,0.3)";
+      ctx.beginPath();
+      ctx.arc(nx, ny + 1*DPR, nailRadius * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 绘制道具包（圆角矩形风格）
+    for (const box of itemBoxes) {
+      const fy = floorY(box.row);
+      const halfW = box.w / 2;
+      const x1 = box.xc - halfW;
+      const x2 = box.xc + halfW;
+      const boxH = L.rBall * 1.4;
+      const y1 = fy - boxH/2;
+      const radius = 4 * DPR;
+
+      const phase = box.timer % 15;
+      const isStateA = phase < 5;
+
+      if (isStateA) {
+        // 状态A：加速轨道（蓝色圆角矩形）- 小程序UI规范
+        ctx.fillStyle = "rgba(0,122,255,0.10)";
+        ctx.strokeStyle = "#007AFF";
+        ctx.lineWidth = 1.5 * DPR;
+
+        // 圆角矩形
+        roundRect(ctx, x1, y1, x2-x1, boxH, radius);
+        ctx.fill();
+        ctx.stroke();
+
+        // 文字（蓝色）
+        ctx.fillStyle = "#007AFF";
+        ctx.font = `bold ${Math.round(8.5 * DPR)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("加速", box.xc, fy);
+      } else {
+        // 状态B：弹簧（橙色圆角矩形）- 小程序UI规范
+        const now = performance.now();
+        const isSpringActive = box.springActive && now < box.springEndTime;
+
+        // 背景色
+        ctx.fillStyle = isSpringActive ? "rgba(255,149,0,0.15)" : "rgba(255,149,0,0.10)";
+        ctx.strokeStyle = "#FF9500";
+        ctx.lineWidth = 1.5 * DPR;
+
+        // 圆角矩形
+        roundRect(ctx, x1, y1, x2-x1, boxH, radius);
+        ctx.fill();
+        ctx.stroke();
+
+        // 激活时的脉冲效果
+        if (isSpringActive) {
+          ctx.strokeStyle = "rgba(255,149,0,0.4)";
+          ctx.lineWidth = 4 * DPR;
+          roundRect(ctx, x1-2*DPR, y1-2*DPR, x2-x1+4*DPR, boxH+4*DPR, radius+2*DPR);
+          ctx.stroke();
+        }
+
+        // 文字（橙色，小程序UI规范 #CC7700）
+        ctx.fillStyle = "#CC7700";
+        ctx.font = `bold ${Math.round(8.5 * DPR)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(isSpringActive ? "砰!" : "弹簧", box.xc, fy);
+      }
+    }
+
+    // 绘制出口靶子（简洁圆圈）
+    ctx.save(); ctx.translate(gongX,gongY);
+    if (gs.winning) ctx.rotate(Math.PI*2*smoothstep(gs.winT));
+
+    // 外圈（绿色边框）
+    ctx.strokeStyle="#34C759"; ctx.lineWidth=2*DPR;
+    ctx.beginPath(); ctx.arc(0,0,gongR,0,Math.PI*2); ctx.stroke();
+
+    // 内圈（浅灰填充）
+    ctx.fillStyle="rgba(52,199,89,0.1)";
+    ctx.beginPath(); ctx.arc(0,0,gongR*0.7,0,Math.PI*2); ctx.fill();
+
+    // 十字准心
+    ctx.strokeStyle="#34C759"; ctx.lineWidth=1.5*DPR;
+    ctx.beginPath();
+    ctx.moveTo(-gongR*0.4,0); ctx.lineTo(gongR*0.4,0);
+    ctx.moveTo(0,-gongR*0.4); ctx.lineTo(0,gongR*0.4); ctx.stroke();
+
+    ctx.restore();
+    // 获胜时显示最终得分
+    if (gs.winning) {
+      // 半透明遮罩
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.fillRect(0, 0, W, H);
+
+      // 得分圆环
+      const ringR = 50 * DPR;
+      ctx.strokeStyle = "#34C759";
+      ctx.lineWidth = 4 * DPR;
+      ctx.beginPath();
+      ctx.arc(W/2, H/2 - 20*DPR, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // 得分文字
+      ctx.fillStyle = "#1a1a1a";
+      ctx.font = `bold ${Math.round(28*DPR)}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`${gs.score}`, W/2, H/2 - 20*DPR);
+
+      // 评语
+      ctx.font = `bold ${Math.round(18*DPR)}px sans-serif`;
+      ctx.fillStyle = gs.score >= 100 ? "#34C759" : (gs.score >= 80 ? "#007AFF" : "#FF9500");
+      const text = gs.score >= 100 ? "🎉 完美通关！" : (gs.score >= 80 ? "👏 优秀！" : "💪 继续加油！");
+      ctx.fillText(text, W/2, H/2 + 50*DPR);
+    }
+
+    // 游戏失败弹窗
+    if (gs.gameOver) {
+      // 半透明遮罩
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.fillRect(0, 0, W, H);
+
+      // 红色警示圆
+      ctx.fillStyle = "#FF453A";
+      ctx.beginPath();
+      ctx.arc(W/2, H/2 - 30*DPR, 35*DPR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // ✕ 符号
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 4 * DPR;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(W/2 - 12*DPR, H/2 - 42*DPR);
+      ctx.lineTo(W/2 + 12*DPR, H/2 - 18*DPR);
+      ctx.moveTo(W/2 + 12*DPR, H/2 - 42*DPR);
+      ctx.lineTo(W/2 - 12*DPR, H/2 - 18*DPR);
+      ctx.stroke();
+
+      // 文字
+      ctx.fillStyle = "#1a1a1a";
+      ctx.font = `bold ${Math.round(20*DPR)}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText("游戏失败", W/2, H/2 + 25*DPR);
+      ctx.font = `${Math.round(14*DPR)}px sans-serif`;
+      ctx.fillStyle = "#8e8e93";
+      ctx.fillText("分数已耗尽，请重新开始", W/2, H/2 + 50*DPR);
+    }
+    if (!gs.winning && !gs.gameOver) {
+      const side=gs.springSide, ct=gs.charging?gs.chargeT:0;
+      // 弹簧始终固定在地面高度，不随球弹跳
+      const floorYVal = ballY(gs.row);
+
+      // 弹簧绘制在固定地面高度（紧贴墙边）
+      drawSpring(side, floorYVal, ct);
+
+      if (!gs.wExists) {
+        // 待发射的白球固定在地面高度，不随其他球弹跳
+        const compress=gs.charging ? L.springNatLen*0.36*smoothstep(ct) : 0;
+        const wx=whiteBallRestX(side,compress);
+        drawBall(ctx, wx, floorYVal, rBall, "#fff", false);
+      }
+    }
+    // 绘制黑球（带阴影和高光）
+    // blackDrawY 已经包含了正确的Y坐标（包括下落过程中的位置或坡道高度）
+    drawBall(ctx, gs.bx, blackDrawY, rBall, "#1a1a1a", true);
+
+    // 绘制白球（带阴影和高光）
+    if (gs.wExists) {
+      let whiteY;
+      if (gs.falling) {
+        // 黑球下落时，白球留在上一行的地面高度
+        whiteY = ballY(gs.row - 1);
+      } else if (Math.abs(gs.wvy) > 1 || gs.wy < ballY(gs.row) - 1) {
+        // 白球在垂直弹跳，使用其实际Y坐标
+        whiteY = gs.wy;
+      } else {
+        // 白球在地面滚动，使用白球自己的地面高度（不受黑球弹跳影响）
+        const whiteRampOffset = getRampHeightOffset(gs.wx, gs.row);
+        whiteY = ballY(gs.row) + whiteRampOffset;
+      }
+      drawBall(ctx, gs.wx, whiteY, rBall, "#fff", false);
+    }
+
+    // 状态信息已移到HTML中显示
+  }
+
+  // 辅助函数：绘制带立体感的球（小程序UI规范）
+  function drawBall(ctx, x, y, r, color, isBlack) {
+    if (isBlack) {
+      // 黑球：径向渐变 中心#555555 → 边缘#111111
+      const grad = ctx.createRadialGradient(
+        x - r*0.25, y - r*0.25, r*0.1,
+        x, y, r
+      );
+      grad.addColorStop(0, "#555555");
+      grad.addColorStop(1, "#111111");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI*2);
+      ctx.fill();
+
+      // 边框 1px #222222
+      ctx.strokeStyle = "#222222";
+      ctx.lineWidth = 1 * DPR;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI*2);
+      ctx.stroke();
+
+      // 高光 rgba(255,255,255,0.28)，半径约2px
+      ctx.fillStyle = "rgba(255,255,255,0.28)";
+      ctx.beginPath();
+      ctx.arc(x - r*0.35, y - r*0.35, r*0.15, 0, Math.PI*2);
+      ctx.fill();
+    } else {
+      // 白球：径向渐变 中心#FFFFFF → 边缘#E0E0E0
+      const grad = ctx.createRadialGradient(
+        x - r*0.25, y - r*0.25, r*0.1,
+        x, y, r
+      );
+      grad.addColorStop(0, "#ffffff");
+      grad.addColorStop(1, "#e0e0e0");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI*2);
+      ctx.fill();
+
+      // 边框 1.5px #BBBBBB
+      ctx.strokeStyle = "#bbbbbb";
+      ctx.lineWidth = 1.5 * DPR;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI*2);
+      ctx.stroke();
+
+      // 高光 rgba(255,255,255,0.9)，半径约2.5px
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.beginPath();
+      ctx.arc(x - r*0.35, y - r*0.35, r*0.18, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  // 更新HTML中的状态显示
+  // 小程序：更新UI状态
+  function updateStatusUI() {
+    // 得分区：左侧得分值
+    const scoreValue = document.getElementById('scoreValue');
+    if (scoreValue) {
+      scoreValue.textContent = `${gs.score}/100`;
+    }
+
+    // 当前层数文字
+    const currentRow = document.getElementById('currentRow');
+    if (currentRow) {
+      currentRow.textContent = gs.row + 1;
+    }
+
+    // 尝试信息
+    const attemptInfo = document.getElementById('attemptInfo');
+    if (attemptInfo) {
+      if (gs.winning) {
+        attemptInfo.textContent = "通关成功";
+      } else if (gs.gameOver) {
+        attemptInfo.textContent = "游戏结束";
+      } else if (gs.rowAttempts > 0 && !gs.falling) {
+        attemptInfo.textContent = `第${gs.rowAttempts}次尝试`;
+      } else {
+        attemptInfo.textContent = "准备出杆";
+      }
+    }
+  }
+
+  function tick(ts) {
+    const dt = gs.lastTs ? Math.min((ts-gs.lastTs)/1000, 0.033) : 0;
+    gs.lastTs = ts;
+
+    // 更新HTML状态
+    updateStatusUI();
+
+    // 更新道具包计时器
+    updateItemBoxes(dt);
+
+    // 游戏失败时只绘制，不更新物理
+    if (gs.gameOver) {
+      draw(ballY(gs.row));
+      requestAnimationFrame(tick);
+      return;
+    }
+    if (gs.charging) gs.chargeT = (ts-gs.chargeStart)/CHARGE_MAX_MS;  // 允许超充能，无上限
+    let blackDrawY = ballY(gs.row);
+    if (gs.winning) {
+      gs.winT = Math.min(gs.winT+dt/1.1, 1);
+      if (gs.winT>=1) resetGame();
+    } else {
+      if (gs.falling) {
+        blackDrawY = updateFall(dt);
+        if (!gs.falling){
+          gs.wExists=false;
+          clampBlackBallSpringRoom();
+          updatePads();
+        }
+      } else {
+        // 更新最后移动方向
+        updateLastDir();
+
+        // 更新道具包计时器和弹簧触发状态
+        updateItemBoxes(dt);
+
+        // 应用加速轨道效果（状态A：0-5秒）
+        applyBoostEffects(dt);
+
+        const frameStartBx = gs.bx;
+        gs.bx += gs.bvx * dt;
+
+        // 记录白球本帧起始位置，用于高速碰撞检测
+        const frameStartWx = gs.wx;
+
+        // 白球先移动，然后检测碰撞
+        if (gs.wExists) {
+          gs.wx += gs.wvx * dt;
+          [gs.wx,gs.wvx] = resolveWalls(gs.wx, gs.wvx);
+          [gs.wx,gs.wvx] = resolveSpringWall(gs.wx, gs.wvx, gs.springSide);
+        }
+        // 使用扫掠检测处理高速碰撞
+        resolveCollisionSwept(frameStartWx);
+
+        // 第二轮墙壁/弹簧解算（包括黑球和白球）
+        if (!gs.falling) {
+          [gs.bx,gs.bvx] = resolveWalls(gs.bx, gs.bvx);
+          [gs.bx,gs.bvx] = resolveSpringWall(gs.bx, gs.bvx, gs.springSide);
+          if (gs.wExists) {
+            [gs.wx,gs.wvx] = resolveWalls(gs.wx, gs.wvx);
+            [gs.wx,gs.wvx] = resolveSpringWall(gs.wx, gs.wvx, gs.springSide);
+          }
+        }
+
+        // ===== 弹簧物理效果（必须在墙壁解算后、摩擦力前应用）=====
+        // 这确保球在正确的X位置被弹起，且速度不为0
+        applySpringForces();
+
+        // ===== 垂直弹跳物理（当前层内弹跳，带天花板限制）=====
+        // 处理弹簧弹起后的垂直运动，防止穿模和越层
+        if (!gs.falling) {
+          updateVerticalBounce(dt);
+        }
+
+        // 所有位移完成后，应用摩擦力（只调用一次）
+        // 同时检测沙地和坡度，取最大摩擦力
+        const blackSandStrength = !gs.falling ? getSandFrictionStrength(gs.bx, gs.row) : 0;
+        const blackRampStrength = !gs.falling ? getRampFrictionStrength(gs.bx, gs.row) : 0;
+        const blackFrictionStrength = Math.max(blackSandStrength, blackRampStrength);
+
+        const whiteSandStrength = gs.wExists && !gs.falling ? getSandFrictionStrength(gs.wx, gs.row) : 0;
+        const whiteRampStrength = gs.wExists && !gs.falling ? getRampFrictionStrength(gs.wx, gs.row) : 0;
+        const whiteFrictionStrength = Math.max(whiteSandStrength, whiteRampStrength);
+
+        gs.bvx = applyFriction(gs.bvx, blackFrictionStrength);
+        if (gs.wExists) gs.wvx = applyFriction(gs.wvx, whiteFrictionStrength);
+
+        // 应用坡度重力（让球在坡上自然滑下）
+        gs.bvx = applyRampGravity(gs.bx, gs.row, gs.bvx);
+        if (gs.wExists) gs.wvx = applyRampGravity(gs.wx, gs.row, gs.wvx);
+
+        // 重置加速标记（当球离开道具包时）
+        resetBoostIfLeftBoxes();
+
+        // 缝隙判断
+        if (!gs.falling && !tryFallThroughGap(frameStartBx)) {
+          if (gs.row===ROWS-1) checkExit();
+        }
+      }
+      // 只有当落地保护帧数为0时才调用maybeEndShot
+      if (gs.landedCooldown <= 0) {
+        maybeEndShot();
+      }
+      if (!gs.winning && !gs.falling && Math.abs(gs.bvx) < STOP_EPS &&
+          (!gs.wExists || Math.abs(gs.wvx) < STOP_EPS)) {
+        clampBlackBallSpringRoom();
+        updatePads();
+      }
+
+      // 递减落地保护帧计数器
+      if (gs.landedCooldown > 0) {
+        gs.landedCooldown--;
+      }
+    }
+
+    // 更新 blackDrawY：弹簧弹跳时使用 gs.by（垂直弹跳位置）
+    if (!gs.falling && (Math.abs(gs.bvy) > 1 || gs.by < ballY(gs.row) - 1)) {
+      blackDrawY = gs.by;
+    }
+
+    draw(blackDrawY);
+    requestAnimationFrame(tick);
+  }
+
+  buildLayout(); resetGame(); requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
