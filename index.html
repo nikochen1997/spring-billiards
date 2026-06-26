@@ -1,2304 +1,440 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-  <title>弹簧台球</title>
-  <script defer src="/_vercel/insights/script.js"></script>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0;}
-    html,body{height:100%;}
-    body{
-      background:#f5f5f7;color:#111111;
-      font-family:ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB",sans-serif;
-      -webkit-tap-highlight-color:transparent;
-      overscroll-behavior:none;
-      user-select:none;
-    }
-
-    /* 手机竖屏容器 - 固定375px宽度，居中显示 */
-    .mobile-frame{
-      width:375px;
-      height:100vh;
-      max-height:812px;
-      margin:0 auto;
-      background:#ffffff;
-      position:relative;
-      overflow:hidden;
-      box-shadow:0 0 20px rgba(0,0,0,0.1);
-    }
-
-    .app{
-      height:100%;display:flex;flex-direction:column;
-      padding:max(8px,env(safe-area-inset-top)) 0 max(12px,env(safe-area-inset-bottom));
-      gap:0;
-    }
-
-    /* 小程序：得分区 */
-    .scoreZone{
-      width:100%;margin:0 auto;
-      height:36px;
-      display:flex;justify-content:space-between;align-items:center;
-      padding:0 14px;
-      border-bottom:2px solid #3A6FA8;
-      background:#ffffff;
-    }
-    .scoreLeft{display:flex;align-items:center;gap:6px;}
-    .scoreLabel{font-size:15px;font-weight:700;color:#111111;}
-    .scoreValue{font-size:15px;font-weight:700;color:#111111;}
-    .scoreRight{font-size:10px;color:#aaaaaa;}
-
-    /* 小程序：游戏画布区域（蓝边边框） */
-    .stageWrap{
-      flex:1;display:flex;justify-content:center;align-items:stretch;
-      min-height:400px;
-      width:calc(100% - 20px);margin:5px auto;
-      background:#ffffff;
-      border:2.5px solid #3A6FA8;
-      border-radius:10px;
-      overflow:hidden;
-      position:relative;
-    }
-    canvas{display:block;touch-action:none;background:#fff;width:100%;height:100%;}
-    .controls{
-      width:100%;margin:0 auto;
-      display:grid;grid-template-columns:1fr auto 1fr;gap:12px;
-      align-items:center;flex-shrink:0;
-      padding:8px 10px;
-    }
-    .btnArea{display:flex;flex-direction:column;align-items:center;gap:6px;}
-    .pad{
-      width:64px;height:64px;border-radius:50%;
-      background:linear-gradient(135deg, #34c759 0%, #2db14d 100%);
-      border:none;cursor:pointer;
-      touch-action:none;
-      box-shadow:0 3px 10px rgba(52,199,89,0.35), inset 0 -2px 4px rgba(0,0,0,0.1);
-      transition:all 0.15s ease;
-      display:flex;align-items:center;justify-content:center;
-    }
-    .pad::after{
-      content:attr(data-dir);
-      color:#fff;font-size:14px;font-weight:600;
-    }
-    .pad.disabled{opacity:0.35;pointer-events:none;transform:scale(0.95);}
-    .pad.pressing{transform:translateY(2px) scale(0.96);box-shadow:0 2px 6px rgba(52,199,89,0.25);}
-    .label{font-size:10px;color:#3A6FA8;font-weight:500;}
-    .resetBtn{
-      padding:8px 16px;border-radius:12px;
-      background:#fff;border:1px solid #e5e5ea;
-      color:#1a1a1a;font-size:12px;font-weight:500;cursor:pointer;
-      box-shadow:0 2px 8px rgba(0,0,0,0.05);
-      transition:all 0.15s ease;
-    }
-    .resetBtn:active{transform:scale(0.96);box-shadow:0 1px 4px rgba(0,0,0,0.08);}
-    /* 小程序：状态栏 */
-    .statusBar{
-      width:100%;margin:0 auto;
-      display:flex;justify-content:space-between;align-items:center;
-      padding:6px 12px;
-      height:28px;
-    }
-    .levelInfo{font-size:12px;color:#666666;font-weight:500;}
-    .levelInfo .current{color:#3A6FA8;font-weight:600;}
-    .hintText{font-size:11px;color:#999999;}
-
-    /* ===== 过关反馈动画 ===== */
-    @keyframes flowerRise {
-      0%   { opacity:0; transform:translateY(0) scale(0.2) rotate(0deg); }
-      18%  { opacity:1; transform:translateY(-25px) scale(1.15) rotate(20deg); }
-      55%  { opacity:1; transform:translateY(-110px) scale(1) rotate(-8deg); }
-      100% { opacity:0; transform:translateY(-200px) scale(0.5) rotate(30deg); }
-    }
-    .feedback-flower{
-      position:absolute;pointer-events:none;z-index:10;
-      font-size:28px;animation:flowerRise 1s ease-out forwards;
-    }
-    @keyframes popBounce {
-      0%   { opacity:0; transform:translateY(25px) scale(0.2); }
-      10%  { opacity:1; transform:translateY(-6px) scale(1.08); }
-      18%  { transform:translateY(0) scale(1); }
-      72%  { opacity:1; transform:translateY(0) scale(1); }
-      100% { opacity:0; transform:translateY(12px) scale(0.7); }
-    }
-    .feedback-angry{
-      position:absolute;right:12px;bottom:12px;z-index:10;
-      pointer-events:none;animation:popBounce 1.8s ease-out forwards;
-    }
-    @keyframes catDance {
-      0%   { transform:translateY(0) rotate(-9deg); }
-      100% { transform:translateY(-8px) rotate(9deg); }
-    }
-    @keyframes bounceIn {
-      0%   { opacity:0; transform:scale(0.3); }
-      50%  { opacity:1; transform:scale(1.08); }
-      100% { transform:scale(1); }
-    }
-    @keyframes shakeIn {
-      0%,100% { transform:translateX(0); }
-      20% { transform:translateX(-8px); }
-      40% { transform:translateX(8px); }
-      60% { transform:translateX(-5px); }
-      80% { transform:translateX(5px); }
-    }
-    @keyframes flowerFall {
-      0%   { opacity:0; transform:translateY(-30px) rotate(0deg); }
-      10%  { opacity:1; }
-      100% { opacity:0; transform:translateY(420px) rotate(180deg); }
-    }
-    @keyframes catShake {
-      0%   { transform:rotate(-3deg); }
-      100% { transform:rotate(3deg); }
-    }
-    .feedback-overlay{
-      position:absolute;inset:0;z-index:20;
-      display:flex;flex-direction:column;align-items:center;justify-content:center;
-      transition:opacity 0.4s ease;
-    }
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<title>弹簧弹珠 · Spring Drop</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{background:#07061a;color:#eaf6ff;font-family:ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB",sans-serif;overflow:hidden;user-select:none;-webkit-user-select:none;display:flex;justify-content:center;align-items:stretch;}
+  #app{position:relative;width:100%;max-width:480px;height:100%;display:flex;flex-direction:column;padding:max(8px,env(safe-area-inset-top)) 10px max(10px,env(safe-area-inset-bottom));gap:6px;}
+  #hud{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;padding:2px 4px;gap:6px;}
+  #hud .lv{font-size:14px;font-weight:600;letter-spacing:.3px;color:#19e3ff;text-shadow:0 0 10px rgba(25,227,255,.6);white-space:nowrap;}
+  #hud .lv small{color:#7da6c4;font-weight:400;}
+  #hud .right{display:flex;align-items:center;gap:9px;flex-shrink:0;}
+  #hud .stat{font-size:13px;font-weight:600;white-space:nowrap;}
+  #hud .tm{color:#9fc4dd;} #hud .coin{color:#ffd24a;text-shadow:0 0 10px rgba(255,210,74,.5);} #hud .hp{color:#ff5d7a;letter-spacing:1px;}
+  #hud .iconbtn{width:28px;height:28px;border-radius:8px;border:1px solid rgba(120,160,200,.3);background:rgba(120,160,200,.08);color:#9fc4dd;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  #stage{flex:1;position:relative;min-height:0;display:flex;}
+  canvas{display:block;width:100%;height:100%;border-radius:14px;touch-action:none;}
+  #controls{flex-shrink:0;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:0 4px 2px;}
+  .padWrap{display:flex;flex-direction:column;align-items:center;gap:5px;}
+  .pad{width:72px;height:72px;border-radius:50%;cursor:pointer;position:relative;border:2px solid;background:radial-gradient(circle at 38% 32%, var(--g1), var(--g2));box-shadow:0 4px 0 var(--sh),0 0 22px var(--gl);transition:transform .08s,box-shadow .08s,opacity .15s;display:flex;align-items:center;justify-content:center;font-size:21px;font-weight:700;color:#04121a;touch-action:none;}
+  .pad.L{--g1:#7df9ff;--g2:#13b6d6;--sh:#0a6e85;--gl:rgba(25,227,255,.55);border-color:#0a8aa6;}
+  .pad.R{--g1:#b69bff;--g2:#7b46e6;--sh:#43237e;--gl:rgba(155,92,255,.55);border-color:#5a2fb0;}
+  .pad.press{transform:translateY(4px);box-shadow:0 0 0 var(--sh),0 0 30px var(--gl);}
+  .padlabel{font-size:11px;color:#7da6c4;letter-spacing:1px;}
+  #resetBtn{padding:9px 13px;border-radius:999px;background:rgba(120,160,200,.08);border:1px solid rgba(120,160,200,.3);color:#9fc4dd;font-size:12px;cursor:pointer;white-space:nowrap;}
+  #resetBtn:active{transform:scale(.96);}
+  .overlay{position:absolute;inset:0;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;text-align:center;background:rgba(7,6,26,.86);backdrop-filter:blur(3px);z-index:5;opacity:0;pointer-events:none;transition:opacity .3s;padding:22px;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .overlay h1{font-size:25px;letter-spacing:2px;color:#3dff9e;text-shadow:0 0 18px rgba(61,255,158,.6);}
+  .overlay h1.lose{color:#ff5d7a;text-shadow:0 0 18px rgba(255,93,122,.6);}
+  .overlay .stars{font-size:32px;letter-spacing:6px;}
+  .overlay .sub{font-size:13px;color:#9fc4dd;line-height:1.8;}
+  .overlay .rec{color:#ffd24a;font-weight:600;}
+  .overlay button{margin-top:4px;padding:11px 26px;border-radius:999px;border:none;cursor:pointer;background:linear-gradient(180deg,#3dff9e,#15c06e);color:#05241a;font-size:15px;font-weight:700;letter-spacing:1px;box-shadow:0 0 22px rgba(61,255,158,.5);}
+  .overlay .ghost{background:transparent;border:1px solid rgba(120,160,200,.4);color:#9fc4dd;box-shadow:none;font-weight:400;}
+  #board{position:absolute;inset:0;border-radius:14px;background:rgba(7,6,26,.94);z-index:6;opacity:0;pointer-events:none;transition:opacity .25s;display:flex;flex-direction:column;padding:18px 16px;}
+  #board.show{opacity:1;pointer-events:auto;}
+  #board h2{font-size:18px;color:#ffd24a;text-align:center;margin-bottom:10px;letter-spacing:1px;}
+  #board .rows{flex:1;overflow-y:auto;font-size:13px;}
+  #board .row{display:flex;justify-content:space-between;padding:7px 6px;border-bottom:1px solid rgba(120,160,200,.12);}
+  #board .row .n{color:#9fc4dd;} #board .row .t{color:#7df9ff;} #board .row .c{color:#ffd24a;}
+  #board .row.head{color:#7da6c4;font-weight:600;border-bottom:1px solid rgba(120,160,200,.3);}
+  #board button{margin-top:12px;padding:10px;border-radius:10px;border:1px solid rgba(120,160,200,.4);background:rgba(120,160,200,.08);color:#9fc4dd;font-size:14px;cursor:pointer;}
+  .hint{position:absolute;left:0;right:0;top:12px;text-align:center;font-size:12px;color:#9fc4dd;z-index:4;pointer-events:none;opacity:.9;padding:0 16px;line-height:1.5;}
+  #rot{display:none;position:fixed;inset:0;background:#07061a;z-index:99;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#9fc4dd;font-size:16px;padding:30px;gap:12px;}
+  #rot .big{font-size:38px;}
+  @media (max-width:384px){ .pad{width:62px;height:62px;font-size:18px;} #hud .lv{font-size:13px;} #hud .stat{font-size:12px;} }
+  @media (orientation:landscape) and (max-height:540px){ #app{display:none;} #rot{display:flex;} }
+</style>
 </head>
 <body>
-<div class="mobile-frame">
-<div class="app">
-  <!-- 小程序：得分区 -->
-  <div class="scoreZone">
-    <div class="scoreLeft">
-      <span class="scoreLabel">得分</span>
-      <span class="scoreValue" id="scoreValue">100/100</span>
+<div id="app">
+  <div id="hud">
+    <div class="lv" id="lvName">第 1 关</div>
+    <div class="right">
+      <div class="stat tm" id="timeEl">0.0s</div>
+      <div class="stat coin" id="coinEl">◆ 0</div>
+      <div class="stat hp" id="hpEl">♥♥♥</div>
+      <div class="iconbtn" id="boardBtn" title="排行榜">🏆</div>
+      <div class="iconbtn" id="muteBtn" title="音效">♪</div>
     </div>
-    <div class="scoreRight">一杆进缝不扣分 · 失败扣10分</div>
   </div>
-
-  <!-- 小程序：游戏主画布（蓝边边框） -->
-  <div class="stageWrap">
-    <canvas id="c"></canvas>
+  <div id="stage">
+    <canvas id="game"></canvas>
+    <div class="hint" id="bigHint"></div>
+    <div class="overlay" id="overlay">
+      <h1 id="ovTitle">过关！</h1>
+      <div class="stars" id="ovStars">★★★</div>
+      <div class="sub" id="ovSub"></div>
+      <button id="ovBtn">下一关</button>
+    </div>
+    <div id="board">
+      <h2>🏆 个人最佳纪录</h2>
+      <div class="rows" id="boardRows"></div>
+      <button id="boardClose">关闭</button>
+    </div>
   </div>
-
-  <!-- 小程序：状态栏 -->
-  <div class="statusBar">
-    <div class="levelInfo">第<span class="current" id="currentRow">1</span>/12层</div>
-    <div class="hintText">长按积攒弹力，松开释放</div>
-    <div class="levelInfo" id="attemptInfo">准备出杆</div>
-  </div>
-
-  <!-- 小程序：控制按钮区 -->
-  <div class="controls">
-    <div class="btnArea"><div class="pad" id="padL" data-dir="左"></div><div class="label">左弹簧</div></div>
-    <button class="resetBtn" id="resetBtn">重新开始</button>
-    <div class="btnArea"><div class="pad" id="padR" data-dir="右"></div><div class="label">右弹簧</div></div>
+  <div id="controls">
+    <div class="padWrap"><div class="pad L" id="padL">左</div><div class="padlabel">左弹簧</div></div>
+    <button id="resetBtn">重新开始</button>
+    <div class="padWrap"><div class="pad R" id="padR">右</div><div class="padlabel">右弹簧</div></div>
   </div>
 </div>
-</div>
-
-<!-- 胖橘猫 SVG 定义 -->
-<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
-  <symbol id="cat-happy" viewBox="0 0 120 140">
-    <path d="M95,115 Q115,100 110,80 Q108,70 100,75" fill="none" stroke="#E8912A" stroke-width="6" stroke-linecap="round"/>
-    <ellipse cx="60" cy="105" rx="32" ry="28" fill="#FFAA33"/>
-    <ellipse cx="60" cy="110" rx="20" ry="18" fill="#FFF5E0"/>
-    <rect x="35" y="125" width="12" height="10" rx="5" fill="#FFAA33"/>
-    <rect x="73" y="125" width="12" height="10" rx="5" fill="#FFAA33"/>
-    <ellipse cx="41" cy="134" rx="5" ry="3" fill="#FFB5B5"/>
-    <ellipse cx="79" cy="134" rx="5" ry="3" fill="#FFB5B5"/>
-    <circle cx="60" cy="52" r="36" fill="#FFAA33"/>
-    <polygon points="30,28 22,2 45,20" fill="#FFAA33"/>
-    <polygon points="90,28 98,2 75,20" fill="#FFAA33"/>
-    <polygon points="33,25 27,8 44,22" fill="#FFB5B5"/>
-    <polygon points="87,25 93,8 76,22" fill="#FFB5B5"/>
-    <circle cx="44" cy="48" r="9" fill="white"/>
-    <circle cx="76" cy="48" r="9" fill="white"/>
-    <circle cx="46" cy="49" r="5.5" fill="#222"/>
-    <circle cx="78" cy="49" r="5.5" fill="#222"/>
-    <circle cx="48" cy="46" r="2" fill="white"/>
-    <circle cx="80" cy="46" r="2" fill="white"/>
-    <polygon points="60,56 57,61 63,61" fill="#FFB5B5"/>
-    <path d="M50,65 Q54,72 60,65 Q66,72 70,65" fill="none" stroke="#222" stroke-width="2" stroke-linecap="round"/>
-    <ellipse cx="34" cy="60" rx="7" ry="4" fill="rgba(255,150,150,0.5)"/>
-    <ellipse cx="86" cy="60" rx="7" ry="4" fill="rgba(255,150,150,0.5)"/>
-    <text x="38" y="12" font-size="12" fill="#FFD700">✦</text>
-    <text x="72" y="8" font-size="10" fill="#FFD700">✦</text>
-  </symbol>
-  <symbol id="cat-angry" viewBox="0 0 120 140">
-    <path d="M95,115 Q120,95 115,70 Q112,60 105,68" fill="none" stroke="#E8912A" stroke-width="8" stroke-linecap="round"/>
-    <ellipse cx="60" cy="105" rx="32" ry="28" fill="#FFAA33"/>
-    <ellipse cx="60" cy="110" rx="20" ry="18" fill="#FFF5E0"/>
-    <rect x="35" y="125" width="12" height="10" rx="5" fill="#FFAA33"/>
-    <rect x="73" y="125" width="12" height="10" rx="5" fill="#FFAA33"/>
-    <ellipse cx="41" cy="134" rx="5" ry="3" fill="#FFB5B5"/>
-    <ellipse cx="79" cy="134" rx="5" ry="3" fill="#FFB5B5"/>
-    <circle cx="60" cy="52" r="36" fill="#FFAA33"/>
-    <polygon points="30,28 22,2 45,20" fill="#FFAA33"/>
-    <polygon points="90,28 98,2 75,20" fill="#FFAA33"/>
-    <polygon points="33,25 27,8 44,22" fill="#FFB5B5"/>
-    <polygon points="87,25 93,8 76,22" fill="#FFB5B5"/>
-    <line x1="34" y1="38" x2="48" y2="42" stroke="#222" stroke-width="3" stroke-linecap="round"/>
-    <line x1="86" y1="38" x2="72" y2="42" stroke="#222" stroke-width="3" stroke-linecap="round"/>
-    <circle cx="44" cy="48" r="9" fill="white"/>
-    <circle cx="76" cy="48" r="9" fill="white"/>
-    <circle cx="45" cy="49" r="3.5" fill="#222"/>
-    <circle cx="77" cy="49" r="3.5" fill="#222"/>
-    <circle cx="46.5" cy="47" r="1.2" fill="white"/>
-    <circle cx="78.5" cy="47" r="1.2" fill="white"/>
-    <polygon points="60,56 57,61 63,61" fill="#FFB5B5"/>
-    <path d="M48,66 Q52,62 56,66 Q60,70 64,66 Q68,62 72,66" fill="none" stroke="#222" stroke-width="2" stroke-linecap="round"/>
-    <ellipse cx="60" cy="74" rx="6" ry="8" fill="#FF6B6B"/>
-    <ellipse cx="34" cy="60" rx="7" ry="4" fill="rgba(255,100,100,0.55)"/>
-    <ellipse cx="86" cy="60" rx="7" ry="4" fill="rgba(255,100,100,0.55)"/>
-    <text x="36" y="14" font-size="14" fill="#FF4444">💢</text>
-    <text x="74" y="10" font-size="11" fill="#FF4444">💢</text>
-  </symbol>
-</svg>
-
+<div id="rot"><div class="big">📱</div><div>竖屏玩更带感<br/>请把手机竖过来</div></div>
 <script>
 (() => {
-  const canvas = document.getElementById("c");
-  const ctx    = canvas.getContext("2d");
-  const padL   = document.getElementById("padL");
-  const padR   = document.getElementById("padR");
-  const resetBtn = document.getElementById("resetBtn");
+"use strict";
 
-  const ROWS          = 12;
-  const CHARGE_MAX_MS = 1500;
-  const FRICTION_FAST = 0.985;
-  const FRICTION_SLOW = 0.92;
-  const SLOW_THRESH   = 18;
-  const WALL_REST     = 0.72;
-  const SPRING_REST   = 0.76;
-  const GRAVITY       = 3200;
-  const STOP_EPS      = 1.2;
+const W=440, H=760, WALL=16, LEFT=WALL, RIGHT=W-WALL, TOP=14, BOTTOM=H-14, BASE_R=11, MAX_HP=5;
+const CFG={
+  gravity:1500, maxSpeed:1800, restWall:0.50, restRail:0.42, restPeg:0.66,
+  friction:0.12, airDrag:0.06, roll:0.86, sleepV:14,
+  minImpulse:250, maxImpulse:760, chargeMs:1100, upRatio:0.55,
+  springPop:1080, sandDragX:0.90, sandDragY:0.96, magnet:2600, slowDrag:0.86, bombR:66, batPower:840,
+};
+const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+const lerp=(a,b,t)=>a+(b-a)*t;
+const rand=(a,b)=>a+Math.random()*(b-a);
+const now=()=>performance.now();
 
-  let DPR = 1, W = 0, H = 0, L = {};
+function railSegs(y,gaps){ const sorted=gaps.slice().sort((a,b)=>a[0]-b[0]); const out=[]; let x=LEFT; for(const [gx,gw] of sorted){ const l=gx-gw/2,r=gx+gw/2; if(l>x)out.push([x,y,l,y]); x=Math.max(x,r);} if(x<RIGHT)out.push([x,y,RIGHT,y]); return out; }
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
 
-  function buildLayout() {
-    const wrap = document.querySelector(".stageWrap");
-    const rect = wrap.getBoundingClientRect();
-    DPR = Math.min(3, window.devicePixelRatio || 1);
-    const maxCanvasCssW = 520;
-    const cssW = Math.max(1, Math.min(rect.width, maxCanvasCssW));
-    const cssH = Math.max(1, rect.height);
-    W   = Math.floor(cssW * DPR);
-    H   = Math.floor(cssH * DPR);
-    canvas.width = W;
-    canvas.height = H;
-    canvas.style.width = cssW + "px";
-    canvas.style.height = cssH + "px";
-    const pLR = 16*DPR, pTop = 14*DPR, pBot = 14*DPR;
-    const railL = pLR, railR = W-pLR, railW = railR-railL;
-    const rowH  = (H - pTop - pBot) / (ROWS+1);
-    const y0    = pTop + rowH;
-    const rBall = Math.max(8*DPR, Math.min(12*DPR, railW*0.019));
-    const gapW  = rBall * 3.3;
-    const marginFromWall = rBall * 3.8;
-    const exitW = rBall*2.8, exitInset = rBall*0.6;
-    const gongR = rBall*1.25;
-    const gongX = railR - exitInset - gongR;
-    const gongY = y0 + (ROWS-1)*rowH;
-    const springNatLen = rBall*4.4, springAnchorOff = rBall*0.9;
-    // 高摩擦区域：每行中间，宽度约4倍球径，摩擦力更强（滑行距离短）
-    const sandW = rBall * 4.2;
-    L = { railL,railR,railW,pTop,pBot,y0,rowH,rBall,gapW,
-          marginFromWall,exitW,exitInset,gongR,gongX,gongY,
-          springNatLen,springAnchorOff,sandW };
+// ===== 关卡生成器 =====
+function genLevel(p){
+  const rng=mulberry32(p.seed);
+  const yTop=128, yBot=690, n=p.rails;
+  const rails=[], pegs=[], boxes=[], sands=[], coins=[], rings=[], hearts=[];
+  const half=p.gapW/2, minX=LEFT+half+16, maxX=RIGHT-half-16, mid=(minX+maxX)/2;
+  const gc=[]; let gx=Math.round(clamp(lerp(minX,maxX,rng()),minX,maxX)); let dir=gx<mid?1:-1;
+  for(let i=0;i<n;i++){ const y=Math.round(yTop+(yBot-yTop)*i/(n-1)); if(i>0){ let shift=lerp(70,p.shift||120,rng()); let ng=gx+dir*shift; if(ng<minX||ng>maxX){dir=-dir;ng=gx+dir*shift;} ng=clamp(ng,minX,maxX); if(Math.abs(ng-gx)<60){dir=-dir;ng=clamp(gx+dir*78,minX,maxX);} gx=ng; if(rng()<0.35)dir=-dir; } gx=Math.round(gx); gc.push([y,gx]); rails.push({y,gaps:[[gx,p.gapW]]}); }
+  for(let i=0;i<n;i++){ if(rng()<p.pegRate){ const sd=rng()<0.5?-1:1; const px=clamp(Math.round(gc[i][1]+sd*(half+22+rng()*46)),LEFT+16,RIGHT-16); const py=Math.round(gc[i][0]-8-rng()*14); pegs.push([px,py]); } }
+  for(let i=0;i<(p.extraPegs||0);i++){ const k=Math.floor(rng()*(n-1)); const sd=rng()<0.5?-1:1; const px=clamp(Math.round(gc[k][1]+sd*(half+30+rng()*44)),LEFT+16,RIGHT-16); const py=Math.round((gc[k][0]+gc[k+1][0])/2); pegs.push([px,py]); }
+  for(let i=1;i<n;i++){ if(rng()<p.boxRate){ const x0=gc[i-1][1],x1=gc[i][1]; let bx=Math.round(lerp(Math.min(x0,x1),Math.max(x0,x1),0.35+rng()*0.3)); bx=clamp(bx,LEFT+22,RIGHT-22); boxes.push({x:bx,y:gc[i][0]-19,r:14,revealed:false,effect:null,flashT:0}); } }
+  for(let i=1;i<n;i++){ if(rng()<p.sandRate){ const x0=gc[i-1][1],x1=gc[i][1]; let sx=Math.round(lerp(Math.min(x0,x1),Math.max(x0,x1),0.5)); sx=clamp(sx,LEFT+46,RIGHT-46); if(Math.abs(sx-gc[i][1])>half+24)sands.push({x:sx,y:gc[i][0],w:80}); } }
+  for(let i=0;i<(p.rings||0);i++){ const k=2+Math.floor(rng()*Math.max(1,n-3)); const ry=Math.round((gc[k][0]+gc[k-1][0])/2); const rx=clamp(Math.round(rand(LEFT+60,RIGHT-60)),LEFT+50,RIGHT-50); rings.push({x:rx,y:ry,r:26}); }
+  for(let i=0;i<(p.hearts||0);i++){ const k=Math.floor(rng()*n); const hx=clamp(Math.round(gc[k][1]+(rng()*2-1)*80),LEFT+18,RIGHT-18); const hy=Math.round(gc[k][0]-14); hearts.push({x:hx,y:hy,got:false}); }
+  for(let i=0;i<(p.coins||0);i++){ const k=Math.floor(rng()*n); const cx=clamp(Math.round(gc[k][1]+(rng()*2-1)*78),LEFT+18,RIGHT-18); const span=k>0?(gc[k][0]-gc[k-1][0]):44; const cy=Math.round(gc[k][0]-12-rng()*Math.min(span*0.4,40)); coins.push([cx,cy]); }
+  const pf=pegs.filter(p2=>{ for(const c of gc){ if(Math.abs(p2[0]-c[1])<half+10 && p2[1]>c[0] && p2[1]<c[0]+52) return false; } return true; });
+  const last=gc[n-1];
+  const bx=clamp(Math.round(gc[0][1]+(gc[0][1]<mid?1:-1)*70),LEFT+22,RIGHT-22);
+  return { name:p.name, par:p.par, ball:[bx,76], rails, pegs:pf, boxes, sands, coins, rings, hearts, exit:[Math.round(last[1]),716,23], tip:p.tip };
+}
+const LEVEL_PARAMS=[
+  {seed:11,name:"起步",par:5,rails:6,gapW:46,shift:88,pegRate:0.3,extraPegs:0,boxRate:0.5,sandRate:0,rings:0,hearts:0,coins:5,tip:"长按蓄力松开弹射，把球漏到底部光环。路上金币顺手收，碰碰问号盒"},
+  {seed:23,name:"问号盒",par:6,rails:7,gapW:44,shift:98,pegRate:0.35,extraPegs:0,boxRate:0.85,sandRate:0,rings:0,hearts:0,coins:6,tip:"问号盒碰到才揭晓——大奖直接通关，也可能棒子把你弹飞"},
+  {seed:37,name:"钉子阵",par:7,rails:8,gapW:43,shift:104,pegRate:0.55,extraPegs:2,boxRate:0.5,sandRate:0,rings:0,hearts:1,coins:6,tip:"缝旁有钉子，撞到弹偏；连撞钉子涨连击"},
+  {seed:41,name:"沙地",par:7,rails:8,gapW:42,shift:104,pegRate:0.45,extraPegs:1,boxRate:0.55,sandRate:0.5,rings:0,hearts:0,coins:7,tip:"灰色沙地让球减速，借机停稳再瞄"},
+  {seed:53,name:"火圈初见",par:8,rails:9,gapW:42,shift:106,pegRate:0.4,extraPegs:1,boxRate:0.6,sandRate:0.3,rings:1,hearts:1,coins:7,tip:"火圈碰到环边会扣血！从环中心钻过去或绕开"},
+  {seed:67,name:"盒子多多",par:8,rails:9,gapW:41,shift:106,pegRate:0.45,extraPegs:2,boxRate:1.0,sandRate:0.3,rings:0,hearts:1,coins:8,tip:"满屏问号盒，赌一把重球/金币雨/直接通关"},
+  {seed:79,name:"金币关",par:9,rails:10,gapW:41,shift:108,pegRate:0.5,extraPegs:2,boxRate:0.6,sandRate:0.4,rings:1,hearts:1,coins:11,tip:"金币超多，看你能收多少；当心火圈"},
+  {seed:97,name:"双火圈",par:9,rails:10,gapW:40,shift:108,pegRate:0.5,extraPegs:2,boxRate:0.6,sandRate:0.4,rings:2,hearts:2,coins:8,tip:"两个火圈，留心血量，血包要捡"},
+  {seed:113,name:"窄缝",par:10,rails:11,gapW:39,shift:110,pegRate:0.5,extraPegs:3,boxRate:0.6,sandRate:0.4,rings:1,hearts:1,coins:8,tip:"缝更窄，精准控力；缩小球盲盒能帮大忙"},
+  {seed:131,name:"沙海",par:10,rails:11,gapW:39,shift:110,pegRate:0.45,extraPegs:2,boxRate:0.6,sandRate:0.7,rings:1,hearts:1,coins:9,tip:"到处是沙地，速度难起来，耐心瞄"},
+  {seed:151,name:"钉海火圈",par:11,rails:11,gapW:38,shift:112,pegRate:0.65,extraPegs:4,boxRate:0.6,sandRate:0.3,rings:2,hearts:2,coins:9,tip:"钉子+火圈，险象环生，连击拿分"},
+  {seed:173,name:"盒海",par:11,rails:12,gapW:38,shift:112,pegRate:0.5,extraPegs:2,boxRate:1.0,sandRate:0.3,rings:1,hearts:2,coins:10,tip:"几乎每层都有盒子，运气与技术并重"},
+  {seed:193,name:"地狱火",par:12,rails:12,gapW:37,shift:114,pegRate:0.55,extraPegs:3,boxRate:0.7,sandRate:0.4,rings:3,hearts:2,coins:9,tip:"三个火圈，保命要紧，血包别错过"},
+  {seed:211,name:"极窄",par:13,rails:12,gapW:36,shift:114,pegRate:0.55,extraPegs:3,boxRate:0.7,sandRate:0.4,rings:2,hearts:2,coins:9,tip:"1.6倍球径的窄缝，控力极限"},
+  {seed:233,name:"终极考验",par:14,rails:13,gapW:36,shift:116,pegRate:0.6,extraPegs:4,boxRate:0.8,sandRate:0.4,rings:3,hearts:3,coins:10,tip:"所有花样的总和——速度、金币、保命，全都要"},
+];
+const LEVELS=LEVEL_PARAMS.map(genLevel);
+
+// ===== 盲盒效果池(加权)：好运/特殊球/陷阱，极端项稀有 =====
+const EFFECTS=[
+  {k:'coin',   w:15,name:'+5 金币',color:'#ffd24a',good:true},
+  {k:'boost',  w:9, name:'冲刺',color:'#ffe14d',good:true},
+  {k:'rocket', w:8, name:'火箭弹起',color:'#3dff9e',good:true},
+  {k:'magnet', w:7, name:'磁吸出口',color:'#ff8ad6',good:true},
+  {k:'shrink', w:8, name:'缩小球',color:'#9becff',good:true},
+  {k:'bomb',   w:8, name:'炸弹球',color:'#ff7a33',good:true},
+  {k:'pierce', w:7, name:'穿透球',color:'#b6e6ff',good:true},
+  {k:'heavy',  w:7, name:'超重球',color:'#9aa6c0',good:true},
+  {k:'coinrain',w:7,name:'金币雨！',color:'#ffd24a',good:true},
+  {k:'heal',   w:6, name:'回血 +1',color:'#ff5d7a',good:true},
+  {k:'jackpot',w:5, name:'金币大奖 +20',color:'#ffd24a',good:true},
+  {k:'warp',   w:3, name:'直接通关！',color:'#3dff9e',good:true},
+  {k:'slow',   w:7, name:'减速',color:'#8aa0b8',good:false},
+  {k:'grow',   w:6, name:'巨化球',color:'#c98aff',good:false},
+  {k:'knock',  w:6, name:'乱弹',color:'#ff5d7a',good:false},
+  {k:'freeze', w:5, name:'冰冻',color:'#7fc8ff',good:false},
+  {k:'bat',    w:5, name:'棒子弹飞！',color:'#ff5d7a',good:false},
+  {k:'hurt',   w:4, name:'扣血 -1',color:'#ff3355',good:false},
+  {k:'back',   w:4, name:'打回上一步',color:'#c98aff',good:false},
+  {k:'reset',  w:2, name:'打回起点！',color:'#ff3355',good:false},
+];
+const EFF_TOTAL=EFFECTS.reduce((s,e)=>s+e.w,0);
+function pickEffect(){ let r=Math.random()*EFF_TOTAL; for(const e of EFFECTS){ if(r<e.w)return e; r-=e.w; } return EFFECTS[0]; }
+
+// ===== 实体 =====
+const ball={x:0,y:0,vx:0,vy:0,r:BASE_R,mode:'normal',modeUntil:0,sizeUntil:0,magnetUntil:0,slowUntil:0,frozenUntil:0,invUntil:0,combo:0,maxCombo:0,hp:3,checkpoints:[]};
+let segs=[], pegs=[], boxes=[], sands=[], coins=[], rings=[], hearts=[], minis=[], exit={x:0,y:0,r:23}, levelStart={x:0,y:0};
+let landed=false, score=0, coinCount=0, gameT0=0, elapsed=0, coinsAtLevelStart=0;
+const labels=[];
+
+function buildLevel(i){
+  const L=LEVELS[i];
+  segs=[[LEFT,TOP,RIGHT,TOP],[LEFT,TOP,LEFT,BOTTOM],[RIGHT,TOP,RIGHT,BOTTOM],[LEFT,BOTTOM,RIGHT,BOTTOM]];
+  for(const r of L.rails) for(const s of railSegs(r.y,r.gaps)) segs.push(s);
+  pegs=(L.pegs||[]).map(p=>({x:p[0],y:p[1],r:7}));
+  boxes=(L.boxes||[]).map(b=>({...b}));
+  sands=(L.sands||[]).map(s=>({...s}));
+  coins=(L.coins||[]).map(c=>({x:c[0],y:c[1],r:7,got:false}));
+  rings=(L.rings||[]).map(r=>({...r,rot:Math.random()*6.28}));
+  hearts=(L.hearts||[]).map(h=>({...h}));
+  minis=[];
+  exit={x:L.exit[0],y:L.exit[1],r:L.exit[2]};
+  levelStart={x:L.ball[0],y:L.ball[1]};
+  ball.x=L.ball[0]; ball.y=L.ball[1]; ball.vx=0; ball.vy=0; ball.r=BASE_R;
+  ball.mode='normal'; ball.modeUntil=0; ball.sizeUntil=0; ball.magnetUntil=0; ball.slowUntil=0; ball.frozenUntil=0; ball.invUntil=0; ball.combo=0; ball.maxCombo=0;
+  ball.checkpoints=[{x:L.ball[0],y:L.ball[1]}];
+  trail.length=0; labels.length=0;
+}
+
+function collideSegment(b,ax,ay,bx,by,e){
+  const abx=bx-ax,aby=by-ay,ab2=abx*abx+aby*aby||1e-6; let t=clamp(((b.x-ax)*abx+(b.y-ay)*aby)/ab2,0,1);
+  const cx=ax+abx*t,cy=ay+aby*t; let nx=b.x-cx,ny=b.y-cy; let d2=nx*nx+ny*ny; if(d2>=b.r*b.r)return false;
+  let d=Math.sqrt(d2)||1e-6; nx/=d; ny/=d; b.x+=nx*(b.r-d); b.y+=ny*(b.r-d); const vn=b.vx*nx+b.vy*ny;
+  if(vn<0){ const jn=-(1+e)*vn; b.vx+=jn*nx; b.vy+=jn*ny; const vn2=b.vx*nx+b.vy*ny; b.vx-=(b.vx-vn2*nx)*CFG.friction; b.vy-=(b.vy-vn2*ny)*CFG.friction; return Math.abs(vn); } return 0.0001;
+}
+function collidePeg(b,p){
+  if(b.mode==='pierce') return false;
+  let nx=b.x-p.x,ny=b.y-p.y; const rr=b.r+p.r; let d2=nx*nx+ny*ny; if(d2>=rr*rr)return false;
+  let d=Math.sqrt(d2)||1e-6; nx/=d; ny/=d; b.x+=nx*(rr-d); b.y+=ny*(rr-d);
+  const e=b.mode==='heavy'?0.32:CFG.restPeg; const vn=b.vx*nx+b.vy*ny;
+  if(vn<0){ const jn=-(1+e)*vn; b.vx+=jn*nx; b.vy+=jn*ny; const vn2=b.vx*nx+b.vy*ny; b.vx-=(b.vx-vn2*nx)*CFG.friction; b.vy-=(b.vy-vn2*ny)*CFG.friction; return Math.abs(vn); } return 0.0001;
+}
+function resolveContacts(b,fx){
+  let contact=false,impact=0,pegHit=false;
+  for(let k=0;k<segs.length;k++){ const s=segs[k]; const e=(s[1]===s[3]&&(s[1]===TOP||s[1]===BOTTOM))?CFG.restWall:(s[0]===s[2])?CFG.restWall:CFG.restRail; const r=collideSegment(b,s[0],s[1],s[2],s[3],e); if(r!==false){contact=true;if(r>impact)impact=r;} }
+  for(let k=0;k<pegs.length;k++){ const r=collidePeg(b,pegs[k]); if(r!==false){contact=true;pegHit=true;if(r>impact)impact=r;if(fx&&r>40)pegs[k].flash=now();} }
+  return {contact,impact,pegHit};
+}
+
+function revealBox(box){ const e=pickEffect(); box.revealed=true; box.effect=e; box.flashT=now(); labels.push({x:box.x,y:box.y,text:e.name,color:e.color,life:1.5}); burst(box.x,box.y,e.color,18,300); sfx(e.good?'reveal':'bad'); applyEffect(e.k); }
+function setSize(mult,ms){ ball.r=BASE_R*mult; ball.sizeUntil=now()+ms; }
+function applyEffect(k){
+  const sp=Math.hypot(ball.vx,ball.vy)||1;
+  if(k==='coin') coinCount+=5;
+  else if(k==='jackpot') coinCount+=20;
+  else if(k==='boost'){ const m=Math.max(sp,200); ball.vx=ball.vx/sp*Math.min(m*2.0,CFG.maxSpeed); ball.vy=ball.vy/sp*Math.min(m*2.0,CFG.maxSpeed); }
+  else if(k==='rocket') ball.vy=-CFG.springPop*1.35;
+  else if(k==='magnet') ball.magnetUntil=now()+2600;
+  else if(k==='shrink') setSize(0.6,6000);
+  else if(k==='grow') setSize(1.55,5000);
+  else if(k==='bomb'){ ball.mode='bomb'; ball.modeUntil=now()+8000; }
+  else if(k==='pierce'){ ball.mode='pierce'; ball.modeUntil=now()+4500; }
+  else if(k==='heavy'){ ball.mode='heavy'; ball.modeUntil=now()+9000; ball.r=BASE_R*1.4; ball.sizeUntil=now()+9000; }
+  else if(k==='coinrain') spawnCoinRain();
+  else if(k==='heal'){ ball.hp=Math.min(MAX_HP,ball.hp+1); updHud(); }
+  else if(k==='warp'){ if(!landed){landed=true; onWin();} }
+  else if(k==='slow') ball.slowUntil=now()+1500;
+  else if(k==='freeze') ball.frozenUntil=now()+1600;
+  else if(k==='knock'){ const a=rand(0,Math.PI*2); ball.vx+=Math.cos(a)*520; ball.vy-=Math.abs(Math.sin(a))*420; }
+  else if(k==='bat'){ const a=rand(-0.9,0.9); ball.vx=Math.sin(a)*CFG.batPower; ball.vy=-Math.abs(Math.cos(a))*CFG.batPower; }
+  else if(k==='hurt'){ damage(1); }
+  else if(k==='back'){ const cp=ball.checkpoints[ball.checkpoints.length-1]; if(cp){ball.x=cp.x;ball.y=cp.y;ball.vx=0;ball.vy=0;} }
+  else if(k==='reset'){ ball.x=levelStart.x;ball.y=levelStart.y;ball.vx=0;ball.vy=0;ball.checkpoints=[{x:levelStart.x,y:levelStart.y}]; }
+}
+function explode(x,y){ burst(x,y,'#ff7a33',42,540); sfx('bomb'); for(let i=pegs.length-1;i>=0;i--){ const p=pegs[i]; if(Math.hypot(p.x-x,p.y-y)<CFG.bombR){ burst(p.x,p.y,'#ff2d95',8,200); pegs.splice(i,1); coinCount+=2; } } }
+function spawnCoinRain(){ labels.push({x:ball.x,y:ball.y-20,text:'金币雨！',color:'#ffd24a',life:1.6}); for(let i=0;i<7;i++){ minis.push({x:ball.x+rand(-20,20),y:ball.y+rand(-10,10),vx:rand(-260,260),vy:rand(-380,-120),r:6,life:4,val:rand(0,1)<0.5?1:2}); } }
+function damage(d){ if(now()<ball.invUntil)return; ball.hp-=d; ball.invUntil=now()+1100; burst(ball.x,ball.y,'#ff3355',18,320); sfx('bad'); updHud(); if(ball.hp<=0)loseLife(); }
+function loseLife(){ state="dead"; labels.length=0; setTimeout(()=>{ ovTitle.textContent="没血了！"; ovTitle.className="lose"; ovStars.innerHTML=""; ovSub.textContent="本关重来（计时继续，金币回退本关）"; ovBtn.textContent="再试一次"; overlay.classList.add("show"); ovBtn.onclick=()=>{ coinCount=coinsAtLevelStart; loadLevel(levelIdx,false); }; }, 500); }
+
+let celebrateStart=0;
+function physicsStep(h){
+  if(landed||state==='dead') return;
+  if(ball.mode!=='normal'&&now()>ball.modeUntil){ ball.mode='normal'; }
+  if(ball.sizeUntil&&now()>ball.sizeUntil){ ball.r=BASE_R; ball.sizeUntil=0; }
+  ball.vy+=CFG.gravity*h; const drag=1-CFG.airDrag*h; ball.vx*=drag; ball.vy*=drag;
+  if(now()<ball.magnetUntil){ const dx=exit.x-ball.x,dy=exit.y-ball.y,d=Math.hypot(dx,dy)||1; ball.vx+=dx/d*CFG.magnet*h; ball.vy+=dy/d*CFG.magnet*h; }
+  let sp=Math.hypot(ball.vx,ball.vy); if(sp>CFG.maxSpeed){const k=CFG.maxSpeed/sp;ball.vx*=k;ball.vy*=k;}
+  const move=Math.hypot(ball.vx,ball.vy)*h; const n=Math.max(1,Math.ceil(move/(ball.r*0.5))), hh=h/n;
+  let stepImpact=0, contact=false, pegHit=false; const slowing=now()<ball.slowUntil;
+  for(let i=0;i<n;i++){
+    ball.x+=ball.vx*hh; ball.y+=ball.vy*hh;
+    if(slowing) ball.vx*=CFG.slowDrag;
+    for(const s of sands){ if(ball.x>s.x-s.w/2&&ball.x<s.x+s.w/2&&Math.abs(ball.y-s.y)<ball.r+10){ ball.vx*=CFG.sandDragX; ball.vy*=CFG.sandDragY; s.flash=now(); } }
+    for(const c of coins){ if(!c.got&&Math.hypot(ball.x-c.x,ball.y-c.y)<ball.r+c.r){ c.got=true; coinCount++; burst(c.x,c.y,'#ffd24a',8,160); sfx('coin'); } }
+    for(const ht of hearts){ if(!ht.got&&Math.hypot(ball.x-ht.x,ball.y-ht.y)<ball.r+9){ ht.got=true; ball.hp=Math.min(MAX_HP,ball.hp+1); burst(ht.x,ht.y,'#ff5d7a',12,200); sfx('coin'); updHud(); } }
+    for(const fr of rings){ const d=Math.hypot(ball.x-fr.x,ball.y-fr.y); if(Math.abs(d-fr.r)<ball.r+6 && now()>ball.invUntil){ const nx=(ball.x-fr.x)/(d||1),ny=(ball.y-fr.y)/(d||1); ball.vx+=nx*420; ball.vy+=ny*420; damage(1); } }
+    for(const b of boxes){ if(!b.revealed&&Math.hypot(ball.x-b.x,ball.y-b.y)<ball.r+b.r){ revealBox(b); if(landed||state==='dead')return; } }
+    const r=resolveContacts(ball,true);
+    if(r.contact){ contact=true; if(r.impact>stepImpact)stepImpact=r.impact; if(r.pegHit)pegHit=true; }
   }
+  if(pegHit && stepImpact>60){ ball.combo++; if(ball.combo>ball.maxCombo)ball.maxCombo=ball.combo; sfx('combo',clamp(0.1+ball.combo*0.03,0.1,0.4),ball.combo); if(ball.mode==='bomb'||ball.mode==='heavy'){ explode(ball.x,ball.y); if(ball.mode==='bomb')ball.mode='normal'; } }
+  if(contact){ const v=Math.hypot(ball.vx,ball.vy); if(v<CFG.sleepV){ball.vx*=0.4;ball.vy*=0.4;if(v<3){ball.vx=0;ball.vy=0;}} else if(v<90){ball.vx*=CFG.roll;} }
+  if(stepImpact>120){ sfx('bounce',clamp(stepImpact/900,0.05,0.5)); spawnSparks(ball.x,ball.y,"#19e3ff",clamp(stepImpact/120,1,6)); }
+  const dx=ball.x-exit.x, dy=ball.y-exit.y; if(dx*dx+dy*dy<(exit.r+ball.r*0.4)*(exit.r+ball.r*0.4)){ landed=true; onWin(); }
+}
 
-  const floorY = i => L.y0 + i*L.rowH;
-  const ballY  = i => floorY(i) - L.rBall;
-
-  let gaps = [];
-  let sandZones = []; // 每行的高摩擦区域中心位置
-  let ramps = []; // 坡度数组，每局3个
-  let nails = []; // 钉子数组，每行一个（除最后一行）
-  function randomizeGaps() {
-    const {railL,railR,marginFromWall,gapW,rBall} = L;
-    const lo = railL+marginFromWall+gapW/2;
-    const hi = railR-marginFromWall-gapW/2;
-    gaps = Array.from({length:ROWS}, ()=>({ xc: lo+Math.random()*(hi-lo) }));
-    // 高摩擦区域：放在缝隙的一侧（不盖住缝隙）
-    sandZones = gaps.map((gap, i) => {
-      // 随机选择缝隙左侧或右侧
-      const side = Math.random() < 0.5 ? -1 : 1;
-      // 随机摩擦力区域宽度（2.5倍到5.5倍球径）
-      const minW = rBall * 2.5;
-      const maxW = rBall * 5.5;
-      const zoneW = minW + Math.random() * (maxW - minW);
-      // 放在缝隙旁边，距离缝隙1-3倍球径
-      const offset = rBall * (1 + Math.random() * 2);
-      const targetX = gap.xc + side * (zoneW/2 + offset);
-      // 确保不超出边界
-      const clampedX = Math.max(railL + zoneW/2, Math.min(railR - zoneW/2, targetX));
-      // 随机摩擦力强度（0.3到1.0，越大摩擦力越强）
-      const strength = 0.3 + Math.random() * 0.7;
-      return {
-        xc: clampedX,
-        w: zoneW,
-        strength: strength
-      };
-    });
-
-    // 生成钉子：每一行都在下落路径中间放一个钉子（除了最后一行）
-    nails = [];
-    // 每一行（0到ROWS-2）都在缝隙正下方的下落路径中间放一个钉子
-    for (let row = 0; row < ROWS - 1; row++) {
-      const gap = gaps[row];
-      // 钉子放在两层之间的下落路径中间位置
-      const y = (ballY(row) + ballY(row + 1)) / 2;
-      nails.push({
-        row: row,        // 从这一行落下时会碰到
-        x: gap.xc,       // 在缝隙中心
-        y: y,            // 下落路径中间（两层之间）
-        r: rBall * 0.35  // 钉子半径0.35倍球径
-      });
-    }
-
-    // 生成3个坡度（随机行，避开最后一行）
-    ramps = [];
-    const availableRows = Array.from({length: ROWS-1}, (_, i) => i); // 0到ROWS-2
-    // 随机打乱并取前3个
-    for (let i = availableRows.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [availableRows[i], availableRows[j]] = [availableRows[j], availableRows[i]];
-    }
-    const rampRows = availableRows.slice(0, 3);
-
-    // 为每行生成坡度，确保恰好3个，且不覆盖缝隙、不与沙地区域重叠
-    for (const row of rampRows) {
-      const gap = gaps[row];
-      const gapX = gap.xc;
-      const gapW = L.gapW; // 缝隙宽度
-      const sandZone = sandZones[row];
-      const sandX = sandZone ? sandZone.xc : gapX;
-      const sandW = sandZone ? sandZone.w : rBall * 4;
-      const rampW = rBall * 8; // 坡度宽度8倍球径
-      const minGap = rBall * 2; // 与缝隙/沙地的最小间距2倍球径
-
-      // 尝试放置坡度
-      let placed = false;
-      for (let tryCount = 0; tryCount < 20 && !placed; tryCount++) {
-        // 计算禁止区域（缝隙和沙地）
-        const gapLeft = gapX - gapW/2 - minGap;
-        const gapRight = gapX + gapW/2 + minGap;
-        const sandLeft = sandX - sandW/2 - minGap;
-        const sandRight = sandX + sandW/2 + minGap;
-
-        // 合并禁止区域
-        const forbidLeft = Math.min(gapLeft, sandLeft);
-        const forbidRight = Math.max(gapRight, sandRight);
-
-        // 计算可用安全区
-        // 左侧：railL + rampW/2 + 边距 到 forbidLeft - rampW/2
-        // 右侧：forbidRight + rampW/2 到 railR - rampW/2 - 边距
-        // 边距 = 道具包宽度 + 白球半径，确保有足够空间发射白球
-        const boxW = rBall * 3; // 道具包宽度
-        const sideMargin = boxW + rBall; // 边距：道具包宽度 + 白球半径
-        const safeLeftStart = railL + rampW/2 + sideMargin;
-        const safeLeftEnd = forbidLeft - rampW/2;
-        const safeRightStart = forbidRight + rampW/2;
-        const safeRightEnd = railR - rampW/2 - sideMargin;
-
-        let xc;
-        const canPlaceLeft = safeLeftEnd > safeLeftStart;
-        const canPlaceRight = safeRightEnd > safeRightStart;
-
-        if (canPlaceLeft && canPlaceRight) {
-          // 两侧都可以，随机选择
-          if (Math.random() < 0.5) {
-            xc = safeLeftStart + Math.random() * (safeLeftEnd - safeLeftStart);
-          } else {
-            xc = safeRightStart + Math.random() * (safeRightEnd - safeRightStart);
-          }
-        } else if (canPlaceLeft) {
-          xc = safeLeftStart + Math.random() * (safeLeftEnd - safeLeftStart);
-        } else if (canPlaceRight) {
-          xc = safeRightStart + Math.random() * (safeRightEnd - safeRightStart);
-        } else {
-          break; // 无空间
-        }
-
-        // 检查是否与已有坡度重叠（同一行）
-        let overlaps = false;
-        for (const existing of ramps) {
-          if (existing.row !== row) continue;
-          const dist = Math.abs(existing.xc - xc);
-          if (dist < (existing.w + rampW) * 0.6) {
-            overlaps = true;
-            break;
-          }
-        }
-
-        if (!overlaps) {
-          // 随机选择摩擦力模式
-          const frictionMode = Math.floor(Math.random() * 3);
-          const strength = 0.4 + Math.random() * 0.6;
-
-          ramps.push({
-            row: row,
-            xc: xc,
-            w: rampW,
-            h: rBall * 1.8,
-            slopeW: rampW * 0.4,
-            flatW: rampW * 0.2,
-            upStrength: frictionMode === 0 ? strength : 0,
-            flatStrength: frictionMode === 1 ? strength : 0,
-            downStrength: frictionMode === 2 ? strength : 0,
-            frictionMode: frictionMode
-          });
-          placed = true;
-        }
-      }
-    }
-
-    // 生成道具包：找平坦空地（无缝隙、坡度、沙地）
-    itemBoxes = [];
-    const boxW = rBall * 3; // 道具包宽度约3倍球径
-    for (let row = 0; row < ROWS - 1; row++) { // 最后一行不生成
-      const gap = gaps[row];
-      const gapLeft = gap.xc - gapW/2;
-      const gapRight = gap.xc + gapW/2;
-      const sandZone = sandZones[row];
-
-      // 找出该行所有的禁止区域（缝隙、沙地、坡度）
-      const forbiddenZones = [];
-      forbiddenZones.push({ left: gapLeft, right: gapRight }); // 缝隙
-      if (sandZone) {
-        forbiddenZones.push({ left: sandZone.xc - sandZone.w/2, right: sandZone.xc + sandZone.w/2 });
-      }
-      // 添加该行的坡度区域
-      for (const ramp of ramps) {
-        if (ramp.row === row) {
-          forbiddenZones.push({ left: ramp.xc - ramp.w/2, right: ramp.xc + ramp.w/2 });
-        }
-      }
-
-      // 在导轨范围内寻找可用的平坦区域
-      // 边距 = 道具包宽度的1.5倍 + 白球直径，确保有足够空间发射白球和弹簧
-      const sideMargin = boxW * 1.5 + rBall * 2;
-      let availableRanges = [];
-      let currentLeft = railL + sideMargin;
-
-      // 排序禁止区域
-      forbiddenZones.sort((a, b) => a.left - b.left);
-
-      for (const zone of forbiddenZones) {
-        if (zone.left - currentLeft >= boxW) {
-          availableRanges.push({ left: currentLeft, right: zone.left });
-        }
-        currentLeft = Math.max(currentLeft, zone.right + sideMargin);
-      }
-      // 检查最后一个区域到右边界（留出足够边距）
-      if (railR - sideMargin - currentLeft >= boxW) {
-        availableRanges.push({ left: currentLeft, right: railR - sideMargin });
-      }
-
-      // 如果有可用区域，随机选择一个位置放置道具包
-      if (availableRanges.length > 0) {
-        const range = availableRanges[Math.floor(Math.random() * availableRanges.length)];
-        const xc = (range.left + range.right) / 2;
-        itemBoxes.push({
-          row: row,
-          xc: xc,
-          w: boxW,
-          timer: Math.random() * 15, // 初始随机时间，0-15秒
-          lastState: 'A', // 上一帧状态，用于检测切换
-        });
-      }
-      // 如果没有空间，该行不生成道具包
-    }
+function updateMinis(dt){
+  for(let i=minis.length-1;i>=0;i--){ const m=minis[i]; m.life-=dt; if(m.life<=0){minis.splice(i,1);continue;} m.vy+=CFG.gravity*dt; m.x+=m.vx*dt; m.y+=m.vy*dt;
+    if(m.x<LEFT+m.r){m.x=LEFT+m.r;m.vx=Math.abs(m.vx)*0.7;} if(m.x>RIGHT-m.r){m.x=RIGHT-m.r;m.vx=-Math.abs(m.vx)*0.7;}
+    if(m.y>BOTTOM-m.r){m.y=BOTTOM-m.r;m.vy=-Math.abs(m.vy)*0.6;} if(m.y<TOP+m.r){m.y=TOP+m.r;m.vy=Math.abs(m.vy)*0.6;}
+    if(Math.hypot(ball.x-m.x,ball.y-m.y)<ball.r+m.r){ coinCount+=m.val; burst(m.x,m.y,'#ffd24a',6,150); sfx('coin'); minis.splice(i,1); }
   }
+}
+
+function predict(impX,impY){
+  const b={x:ball.x,y:ball.y,vx:ball.vx+impX,vy:ball.vy+impY,r:ball.r,mode:ball.mode==='pierce'?'pierce':'normal'}; const pts=[]; const h=1/120;
+  for(let i=0;i<150;i++){ b.vy+=CFG.gravity*h; const sp=Math.hypot(b.vx,b.vy); if(sp>CFG.maxSpeed){const k=CFG.maxSpeed/sp;b.vx*=k;b.vy*=k;} const move=Math.hypot(b.vx,b.vy)*h; const n=Math.max(1,Math.ceil(move/(b.r*0.5))),hh=h/n; for(let j=0;j<n;j++){ b.x+=b.vx*hh; b.y+=b.vy*hh; resolveContacts(b,false); } if(i%3===0)pts.push([b.x,b.y]); const dx=b.x-exit.x,dy=b.y-exit.y; if(dx*dx+dy*dy<(exit.r+b.r*0.4)*(exit.r+b.r*0.4))break; }
+  return pts;
+}
+
+const trail=[], parts=[];
+function spawnSparks(x,y,color,count){ for(let i=0;i<count;i++){const a=rand(0,Math.PI*2),s=rand(40,200);parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-40,life:1,color});} }
+function burst(x,y,color,count,spd){ for(let i=0;i<count;i++){const a=rand(0,Math.PI*2),s=rand(spd*0.3,spd);parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,color});} }
+function updateParticles(dt){
+  for(let i=parts.length-1;i>=0;i--){ const p=parts[i]; p.life-=dt*1.6; if(p.life<=0){parts.splice(i,1);continue;} p.vy+=600*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; }
+  for(let i=labels.length-1;i>=0;i--){ const l=labels[i]; l.life-=dt*0.7; l.y-=dt*30; if(l.life<=0)labels.splice(i,1); }
+  for(const fr of rings) fr.rot+=dt*1.2;
+  if(!landed&&state==='play'){ trail.push([ball.x,ball.y]); if(trail.length>18) trail.shift(); }
+}
+
+let actx=null, muted=false, lastBeep=0;
+function sfx(type,vol,combo){ if(muted) return; try{
+  if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); const t=actx.currentTime;
+  if(type==='bounce'){ if(now()-lastBeep<35) return; lastBeep=now(); }
+  const o=actx.createOscillator(), g=actx.createGain(); let f=440,d=0.08,v=vol||0.2,wave='sine';
+  if(type==='launch'){f=220;d=0.12;v=0.25;wave='triangle';}
+  else if(type==='bounce'){f=320+Math.random()*180;d=0.06;v=vol||0.12;wave='sine';}
+  else if(type==='combo'){f=300+(combo||1)*40;d=0.07;v=vol||0.2;wave='square';}
+  else if(type==='coin'){f=988;d=0.17;v=0.2;wave='square';}
+  else if(type==='reveal'){f=620;d=0.18;v=0.3;wave='triangle';}
+  else if(type==='bad'){f=160;d=0.24;v=0.32;wave='sawtooth';}
+  else if(type==='bomb'){f=110;d=0.32;v=0.36;wave='sawtooth';}
+  else if(type==='win'){f=660;d=0.6;v=0.32;wave='triangle';}
+  o.type=wave; o.frequency.setValueAtTime(f,t);
+  if(type==='launch')o.frequency.exponentialRampToValueAtTime(f*2.4,t+d);
+  if(type==='win')o.frequency.exponentialRampToValueAtTime(f*2,t+d);
+  if(type==='reveal')o.frequency.exponentialRampToValueAtTime(f*1.7,t+d);
+  if(type==='coin'){o.frequency.setValueAtTime(988,t);o.frequency.setValueAtTime(1319,t+0.06);}
+  g.gain.setValueAtTime(v,t); g.gain.exponentialRampToValueAtTime(0.0001,t+d);
+  o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t+d+0.02);
+}catch(e){} }
+
+const canvas=document.getElementById("game"), ctx=canvas.getContext("2d");
+let DPR=1, scale=1, offX=0, offY=0, cssW=0, cssH=0;
+function resize(){ const rect=document.getElementById("stage").getBoundingClientRect(); DPR=Math.min(3,window.devicePixelRatio||1); cssW=rect.width; cssH=rect.height; canvas.width=Math.floor(cssW*DPR); canvas.height=Math.floor(cssH*DPR); scale=Math.min(cssW/W,cssH/H); offX=(cssW-W*scale)/2; offY=(cssH-H*scale)/2; }
+window.addEventListener("resize",resize); window.addEventListener("orientationchange",()=>setTimeout(resize,150));
+function roundRectPath(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+const MODE_COLOR={normal:["#ffffff","#9becff","#19c9e6"],bomb:["#fff0e0","#ffb070","#ff6a1a"],pierce:["#ffffff","#cdeeff","#7fc8ff"],heavy:["#e6e9f0","#9aa6c0","#5a6680"]};
+
+function draw(){
+  ctx.setTransform(DPR,0,0,DPR,0,0); ctx.clearRect(0,0,cssW,cssH);
+  const g=ctx.createLinearGradient(0,0,0,cssH); g.addColorStop(0,"#0c0926"); g.addColorStop(1,"#070518"); ctx.fillStyle=g; ctx.fillRect(0,0,cssW,cssH);
+  ctx.save(); ctx.translate(offX,offY); ctx.scale(scale,scale);
+  roundRectPath(LEFT-4,TOP-4,RIGHT-LEFT+8,BOTTOM-TOP+8,12); ctx.lineWidth=2; ctx.strokeStyle="rgba(40,60,120,.5)"; ctx.stroke();
+  ctx.strokeStyle="rgba(60,90,180,.08)"; ctx.lineWidth=1;
+  for(let gx=LEFT;gx<=RIGHT;gx+=40){ctx.beginPath();ctx.moveTo(gx,TOP);ctx.lineTo(gx,BOTTOM);ctx.stroke();}
+  for(let gy=TOP;gy<=BOTTOM;gy+=40){ctx.beginPath();ctx.moveTo(LEFT,gy);ctx.lineTo(RIGHT,gy);ctx.stroke();}
+  for(const s of sands){ const fl=s.flash&&now()-s.flash<120; ctx.save(); ctx.globalAlpha=0.65; ctx.strokeStyle=fl?"#d6e2ee":"#8aa0b8"; ctx.lineWidth=2; ctx.lineCap="round"; const x0=s.x-s.w/2,cnt=Math.floor(s.w/9); for(let i=0;i<=cnt;i++){const x=x0+i*9;ctx.beginPath();ctx.moveTo(x,s.y-6);ctx.lineTo(x,s.y+6);ctx.stroke();} ctx.restore(); }
+  ctx.save(); ctx.shadowColor="#19e3ff"; ctx.shadowBlur=10; ctx.lineCap="round";
+  for(const s of segs){ const isWall=(s[0]===s[2])||(s[1]===s[3]&&(s[1]===TOP||s[1]===BOTTOM)); ctx.strokeStyle=isWall?"#2d6fe0":"#19e3ff"; ctx.lineWidth=isWall?5:4; ctx.beginPath(); ctx.moveTo(s[0],s[1]); ctx.lineTo(s[2],s[3]); ctx.stroke(); }
+  ctx.restore();
+  // 火圈
+  for(const fr of rings){ ctx.save(); ctx.translate(fr.x,fr.y);
+    ctx.strokeStyle="#4a3326"; ctx.lineWidth=5; ctx.beginPath(); ctx.arc(0,0,fr.r,0,Math.PI*2); ctx.stroke();
+    ctx.strokeStyle="#c98a4a"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(0,0,fr.r,0,Math.PI*2); ctx.stroke();
+    const flames=20;
+    for(let i=0;i<flames;i++){ const a=i/flames*Math.PI*2+fr.rot; const ca=Math.cos(a),sa=Math.sin(a); const h=11+7*Math.sin(now()/70+i*1.9); const bx2=ca*fr.r,by2=sa*fr.r,tx=ca*(fr.r+h),ty=sa*(fr.r+h),px=-sa,py=ca,wd=3.4;
+      ctx.save(); ctx.shadowColor="#ff6a1a"; ctx.shadowBlur=10; const gr=ctx.createLinearGradient(bx2,by2,tx,ty); gr.addColorStop(0,"#ffe14d"); gr.addColorStop(0.55,"#ff7a1a"); gr.addColorStop(1,"rgba(255,50,20,0.15)"); ctx.fillStyle=gr;
+      ctx.beginPath(); ctx.moveTo(bx2+px*wd,by2+py*wd); ctx.quadraticCurveTo(bx2+ca*h*0.5,by2+sa*h*0.5,tx,ty); ctx.quadraticCurveTo(bx2+ca*h*0.5,by2+sa*h*0.5,bx2-px*wd,by2-py*wd); ctx.closePath(); ctx.fill(); ctx.restore(); }
+    ctx.restore(); }
+  // 血包
+  for(const ht of hearts){ if(ht.got)continue; const pul=0.7+0.3*Math.sin(now()/250+ht.x); ctx.save(); ctx.shadowColor="#ff5d7a"; ctx.shadowBlur=10*pul; ctx.fillStyle="#ff5d7a"; ctx.font="bold 18px system-ui"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("♥",ht.x,ht.y+1); ctx.restore(); }
+  // 金币
+  for(const c of coins){ if(c.got)continue; const sp=Math.abs(Math.sin(now()/340+c.x*0.05)); const w=Math.max(1.5,c.r*(0.18+0.82*sp)); ctx.save(); ctx.shadowColor="#ffd24a"; ctx.shadowBlur=10; ctx.fillStyle="#f5b81e"; ctx.beginPath(); ctx.ellipse(c.x,c.y,w,c.r,0,0,Math.PI*2); ctx.fill(); ctx.lineWidth=1.6; ctx.strokeStyle="#a86f0a"; ctx.stroke(); if(w>3.2){ ctx.fillStyle="#ffe89a"; ctx.beginPath(); ctx.ellipse(c.x,c.y,w*0.55,c.r*0.62,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle="#a86f0a"; ctx.fillRect(c.x-1,c.y-c.r*0.42,2,c.r*0.84); } ctx.restore(); }
+  // 金币雨小球
+  for(const m of minis){ ctx.save(); ctx.globalAlpha=clamp(m.life,0,1); ctx.shadowColor="#ffd24a"; ctx.shadowBlur=8; ctx.fillStyle=m.val>1?"#ffe14d":"#ffd24a"; ctx.beginPath(); ctx.arc(m.x,m.y,m.r,0,Math.PI*2); ctx.fill(); ctx.restore(); }
+  for(const p of pegs){ const fl=p.flash&&now()-p.flash<160; ctx.save(); ctx.shadowColor="#ff2d95"; ctx.shadowBlur=fl?24:12; ctx.fillStyle=fl?"#ffd6ea":"#ff2d95"; ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill(); ctx.restore(); }
+  for(const b of boxes){ const fl=b.flashT&&now()-b.flashT<260; ctx.save(); if(!b.revealed){ const pul=0.5+0.5*Math.sin(now()/300+b.x); ctx.shadowColor="#c08bff"; ctx.shadowBlur=12+pul*8; ctx.strokeStyle="#c08bff"; ctx.lineWidth=2.5; ctx.fillStyle="rgba(150,90,255,.14)"; roundRectPath(b.x-b.r,b.y-b.r,b.r*2,b.r*2,5); ctx.fill(); ctx.stroke(); ctx.fillStyle="#e8d6ff"; ctx.font="bold 17px system-ui"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("?",b.x,b.y+1); } else if(fl){ ctx.globalAlpha=1-(now()-b.flashT)/260; ctx.shadowColor=b.effect.color; ctx.shadowBlur=20; ctx.strokeStyle=b.effect.color; ctx.lineWidth=2.5; roundRectPath(b.x-b.r,b.y-b.r,b.r*2,b.r*2,5); ctx.stroke(); } ctx.restore(); }
+  const pulse=0.5+0.5*Math.sin(now()/350);
+  ctx.save(); ctx.shadowColor="#3dff9e"; ctx.shadowBlur=18+pulse*16; ctx.strokeStyle="#3dff9e"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(exit.x,exit.y,exit.r,0,Math.PI*2); ctx.stroke(); ctx.globalAlpha=0.35+pulse*0.3; ctx.beginPath(); ctx.arc(exit.x,exit.y,exit.r*0.55,0,Math.PI*2); ctx.stroke(); ctx.globalAlpha=1; ctx.fillStyle="rgba(61,255,158,.10)"; ctx.beginPath(); ctx.arc(exit.x,exit.y,exit.r,0,Math.PI*2); ctx.fill(); ctx.restore();
+  if(now()<ball.magnetUntil && !landed){ ctx.save(); ctx.strokeStyle="rgba(255,138,214,.5)"; ctx.lineWidth=1.5; ctx.setLineDash([4,5]); ctx.beginPath(); ctx.moveTo(ball.x,ball.y); ctx.lineTo(exit.x,exit.y); ctx.stroke(); ctx.restore(); }
+  if(charging&&previewPts.length){ ctx.save(); ctx.fillStyle="rgba(255,255,255,.55)"; for(let i=0;i<previewPts.length;i++){ ctx.globalAlpha=(1-i/previewPts.length)*0.7; ctx.beginPath(); ctx.arc(previewPts[i][0],previewPts[i][1],2.4,0,Math.PI*2); ctx.fill(); } ctx.restore(); }
+  if(!landed&&state==='play') for(let i=0;i<trail.length;i++){ const a=i/trail.length; ctx.globalAlpha=a*0.5; ctx.fillStyle="#19e3ff"; ctx.beginPath(); ctx.arc(trail[i][0],trail[i][1],ball.r*0.7*a,0,Math.PI*2); ctx.fill(); } ctx.globalAlpha=1;
+  if((!landed&&state!=='dead')||now()-celebrateStart<900){ const cols=MODE_COLOR[ball.mode]||MODE_COLOR.normal; const inv=now()<ball.invUntil&&Math.floor(now()/100)%2===0; ctx.save(); ctx.globalAlpha=inv?0.4:1; if(ball.mode==='pierce')ctx.globalAlpha*=0.75; ctx.shadowColor=cols[1]; ctx.shadowBlur=ball.mode==='bomb'||ball.mode==='heavy'?24:18; const bg=ctx.createRadialGradient(ball.x-ball.r*0.3,ball.y-ball.r*0.3,1,ball.x,ball.y,ball.r); bg.addColorStop(0,cols[0]); bg.addColorStop(0.5,cols[1]); bg.addColorStop(1,cols[2]); ctx.fillStyle=bg; ctx.beginPath(); ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2); ctx.fill(); ctx.restore(); if(now()<ball.frozenUntil){ ctx.save(); ctx.strokeStyle="#7fc8ff"; ctx.lineWidth=2; ctx.shadowColor="#7fc8ff"; ctx.shadowBlur=10; ctx.beginPath(); ctx.arc(ball.x,ball.y,ball.r+3,0,Math.PI*2); ctx.stroke(); ctx.restore(); } if(ball.combo>=2){ ctx.save(); ctx.fillStyle="#ffe14d"; ctx.font="bold 13px system-ui"; ctx.textAlign="center"; ctx.shadowColor="#ffe14d"; ctx.shadowBlur=8; ctx.fillText("x"+ball.combo,ball.x,ball.y-ball.r-6); ctx.restore(); } }
+  if(charging){ const dir=chargeSide==='L'?-1:1; let ix=dir*Math.cos(0.5),iy=-Math.sin(0.5)-CFG.upRatio; const m=Math.hypot(ix,iy);ix/=m;iy/=m; const len=20+charge*46; ctx.save(); ctx.strokeStyle=chargeSide==='L'?"#19e3ff":"#9b5cff"; ctx.lineWidth=3; ctx.lineCap="round"; ctx.shadowColor=ctx.strokeStyle; ctx.shadowBlur=12; ctx.beginPath(); ctx.moveTo(ball.x,ball.y); ctx.lineTo(ball.x+ix*len,ball.y+iy*len); ctx.stroke(); ctx.restore(); }
+  for(const p of parts){ ctx.globalAlpha=clamp(p.life,0,1); ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(p.x,p.y,2.2,0,Math.PI*2); ctx.fill(); } ctx.globalAlpha=1;
+  for(const l of labels){ ctx.save(); ctx.globalAlpha=clamp(l.life,0,1); ctx.fillStyle=l.color; ctx.font="bold 15px system-ui"; ctx.textAlign="center"; ctx.shadowColor=l.color; ctx.shadowBlur=8; ctx.fillText(l.text,l.x,l.y); ctx.restore(); }
+  ctx.restore();
+}
+
+let levelIdx=0, state="play";
+let charging=false, chargeSide=null, chargeStart=0, charge=0, previewPts=[];
+const elLvName=document.getElementById("lvName"), elTime=document.getElementById("timeEl"), elCoin=document.getElementById("coinEl"), elHp=document.getElementById("hpEl");
+const elBigHint=document.getElementById("bigHint"), overlay=document.getElementById("overlay");
+const ovTitle=document.getElementById("ovTitle"), ovStars=document.getElementById("ovStars"), ovSub=document.getElementById("ovSub"), ovBtn=document.getElementById("ovBtn");
+const padL=document.getElementById("padL"), padR=document.getElementById("padR");
+const boardEl=document.getElementById("board"), boardRows=document.getElementById("boardRows");
+let hintTimer=null;
+
+function loadBest(){ try{return JSON.parse(localStorage.getItem('springdrop_best')||'{}');}catch(e){return{};} }
+function saveBest(b){ try{localStorage.setItem('springdrop_best',JSON.stringify(b));}catch(e){} }
+function setHp(){ let s='<span style="color:#ff5d7a">'; for(let i=0;i<ball.hp;i++)s+='♥'; s+='</span>'; elHp.innerHTML=s||'<span style="color:#3a2030">·</span>'; }
+function updHud(){ elTime.textContent=elapsed.toFixed(1)+'s'; elCoin.textContent='◆ '+coinCount; setHp(); }
+
+function loadLevel(i, fresh){
+  levelIdx=i; state="play"; landed=false; charging=false; chargeSide=null; charge=0; previewPts=[];
+  parts.length=0; trail.length=0; score=0; minis.length=0; buildLevel(i); ball.hp=3;
+  if(fresh){ gameT0=now(); coinCount=0; }
+  coinsAtLevelStart=coinCount;
+  elLvName.textContent=`第 ${i+1} 关 · ${LEVELS[i].name}`;
+  updHud(); setHp();
+  elBigHint.textContent=LEVELS[i].tip||""; elBigHint.style.opacity="0.9"; overlay.classList.remove("show");
+  if(hintTimer)clearTimeout(hintTimer); hintTimer=setTimeout(()=>{elBigHint.style.opacity="0";},4200);
+}
+function startCharge(side){ if(state!=="play"||landed) return; if(now()<ball.frozenUntil){ labels.push({x:ball.x,y:ball.y-18,text:'冻住了',color:'#7fc8ff',life:0.8}); return; } charging=true; chargeSide=side; chargeStart=now(); charge=0; (side==='L'?padL:padR).classList.add("press"); elBigHint.style.opacity="0"; }
+function releaseCharge(){
+  if(!charging) return; charging=false; padL.classList.remove("press"); padR.classList.remove("press");
+  ball.checkpoints.push({x:ball.x,y:ball.y}); if(ball.checkpoints.length>12)ball.checkpoints.shift();
+  const dir=chargeSide==='L'?-1:1; let power=lerp(CFG.minImpulse,CFG.maxImpulse,charge); if(ball.mode==='heavy')power*=0.62;
+  let ix=dir*Math.cos(0.5), iy=-Math.sin(0.5)-CFG.upRatio; const m=Math.hypot(ix,iy); ix/=m; iy/=m;
+  ball.vx+=ix*power; ball.vy+=iy*power; ball.combo=0;
+  sfx('launch'); burst(ball.x,ball.y,chargeSide==='L'?"#19e3ff":"#9b5cff",10,220); chargeSide=null; previewPts=[];
+}
+function onWin(){
+  state="win"; celebrateStart=now(); burst(exit.x,exit.y,"#3dff9e",70,460); sfx('win');
+  const last=levelIdx>=LEVELS.length-1;
+  if(!last){ labels.push({x:exit.x,y:exit.y-32,text:`第 ${levelIdx+1} 关 ✓`,color:'#3dff9e',life:1.6}); setTimeout(()=>loadLevel(levelIdx+1,false),720); return; }
+  const tm=elapsed; const best=loadBest(); const rec=best.all||{time:1e9,coins:-1};
+  const newTime=tm<rec.time, newCoin=coinCount>rec.coins;
+  best.all={time:Math.min(tm,rec.time),coins:Math.max(coinCount,rec.coins)}; saveBest(best);
+  const cb=ball.maxCombo>=3?` · 最高连击 x${ball.maxCombo}`:"";
+  setTimeout(()=>{
+    ovTitle.textContent="🎉 全部通关！"; ovTitle.className=""; ovStars.innerHTML="★★★";
+    let rl=""; if(newTime)rl+="<span class='rec'>⚡ 最快纪录！</span> "; if(newCoin)rl+="<span class='rec'>◆ 金币纪录！</span>";
+    ovSub.innerHTML=`全程 15 关用时 <b>${tm.toFixed(1)}s</b> · 总金币 <span style='color:#ffd24a'>${coinCount}</span>${cb}<br/>${rl||"个人最佳 "+best.all.time.toFixed(1)+"s / ◆"+best.all.coins}`;
+    ovBtn.textContent="再玩一轮"; overlay.classList.add("show"); ovBtn.onclick=()=>loadLevel(0,true);
+  }, 850);
+}
+function showBoard(){ const best=loadBest(); const a=best.all; let html='<div class="row head"><span class="n">全程 15 关</span><span class="t">最快用时</span><span class="c">最多金币</span></div>'; html+=`<div class="row"><span class="n">通关纪录</span><span class="t">${a?a.time.toFixed(1)+'s':'未通关'}</span><span class="c">${a?'◆'+a.coins:'—'}</span></div>`; html+='<div class="row" style="border:none;color:#7da6c4;font-size:12px;margin-top:10px;display:block;text-align:center">目标：用最短时间通关全部 15 关，金币越多越好</div>'; boardRows.innerHTML=html; boardEl.classList.add("show"); }
+
+function bindPad(el,side){ const down=(e)=>{ e.preventDefault(); try{el.setPointerCapture(e.pointerId);}catch(_){} if(actx&&actx.state==='suspended')actx.resume(); startCharge(side); }; const up=(e)=>{ e.preventDefault(); releaseCharge(); }; el.addEventListener("pointerdown",down); el.addEventListener("pointerup",up); el.addEventListener("pointercancel",up); }
+bindPad(padL,'L'); bindPad(padR,'R');
+document.addEventListener("keydown",(e)=>{ if(e.repeat)return; const k=e.key.toLowerCase(); if(e.key==="ArrowLeft"||k==="a")startCharge('L'); else if(e.key==="ArrowRight"||k==="d")startCharge('R'); else if(k==="r"){ coinCount=coinsAtLevelStart; loadLevel(levelIdx,false); } });
+document.addEventListener("keyup",(e)=>{ const k=e.key.toLowerCase(); if((e.key==="ArrowLeft"||k==="a")&&chargeSide==='L')releaseCharge(); else if((e.key==="ArrowRight"||k==="d")&&chargeSide==='R')releaseCharge(); });
+document.getElementById("resetBtn").addEventListener("click",()=>{ coinCount=coinsAtLevelStart; loadLevel(levelIdx,false); });
+document.getElementById("muteBtn").addEventListener("click",function(){ muted=!muted; this.textContent=muted?"♪̸":"♪"; this.style.opacity=muted?"0.4":"1"; });
+document.getElementById("boardBtn").addEventListener("click",showBoard);
+document.getElementById("boardClose").addEventListener("click",()=>boardEl.classList.remove("show"));
+
+const FIXED=1/120; let acc=0, lastTs=0;
+function frame(ts){
+  if(!lastTs) lastTs=ts; let dt=(ts-lastTs)/1000; lastTs=ts; if(dt>0.1) dt=0.1;
+  if(state==="play"){ elapsed=(now()-gameT0)/1000; elTime.textContent=elapsed.toFixed(1)+'s'; }
+  if(charging){ charge=clamp((now()-chargeStart)/CFG.chargeMs,0,1); const dir=chargeSide==='L'?-1:1; let power=lerp(CFG.minImpulse,CFG.maxImpulse,charge); if(ball.mode==='heavy')power*=0.62; let ix=dir*Math.cos(0.5),iy=-Math.sin(0.5)-CFG.upRatio; const m=Math.hypot(ix,iy);ix/=m;iy/=m; previewPts=predict(ix*power,iy*power); }
+  if(state==="play"){ acc+=dt; let steps=0; while(acc>=FIXED&&steps<10){ physicsStep(FIXED); acc-=FIXED; steps++; } }
+  const pdt=(state==="win"&&now()-celebrateStart<900)?dt*0.4:dt;
+  updateMinis(pdt); updateParticles(pdt); draw(); requestAnimationFrame(frame);
+}
+resize(); loadLevel(0,true); requestAnimationFrame(frame);
 
-  const gs = {
-    row:0, bx:0, by:0, bvx:0, bvy:0,
-    blackFalling:false, whiteFalling:false, fallTime:0, fallY0:0, fallVx:0,
-    wx:0, wy:0, wvx:0, wvy:0, wExists:false, wRow:0,
-    springSide:"left", lastSpringSide:"left",
-    charging:false, chargeStart:0, chargeT:0, chargeSide:null,
-    winning:false, winT:0, lastTs:0,
-    // 计分系统
-    score:100,                // 初始满分100
-    rowAttempts:0,            // 当前行已尝试次数
-    penaltyApplied:false,     // 本次尝试是否已扣分（防止重复扣）
-    gameOver:false,           // 游戏失败状态
-    // 道具包系统
-    hasBoosted:false,         // 是否已触发加速
-    lastDir:1,                // 最后水平移动方向（1=右，-1=左）
-  };
-
-  function springAnchorX(side) {
-    // 弹簧紧贴画布左右边缘（0 和 W）
-    return side==="left" ? 0 : W;
-  }
-  function springFaceX(side, compress) {
-    const len = L.springNatLen - compress;
-    const ax  = springAnchorX(side);
-    return side==="left" ? ax+len : ax-len;
-  }
-  function whiteBallRestX(side, compress) {
-    const fx = springFaceX(side, compress);
-    return side==="left" ? fx+L.rBall : fx-L.rBall;
-  }
-
-  /**
-   * 弹簧侧判定：
-   * - 其他行：球在缝隙左 → 左簧，球在缝隙右 → 右簧
-   * - 最后一行（row=ROWS-1）：始终左簧，用白球把球推向右出口
-   */
-  function computeSpringSide() {
-    // 下落期间锁定弹簧位置，防止计算出错导致弹簧消失
-    if (gs.blackFalling || gs.whiteFalling) return gs.lastSpringSide;
-    // 最后一行：始终左簧，球需要向右滚入出口
-    if (gs.row === ROWS - 1) return "left";
-    const gap = gaps[gs.row];
-    if (!gap) return gs.lastSpringSide;
-    const xc = gap.xc;
-    const dx = gs.bx - xc;
-    if (Math.abs(dx) < 0.01 * DPR) return gs.lastSpringSide;
-    return dx < 0 ? "left" : "right";
-  }
-  function refreshSpringSide() {
-    const s = computeSpringSide();
-    gs.springSide = s; gs.lastSpringSide = s;
-  }
-
-  /**
-   * 规则：黑球太贴墙时往中场推，留出弹簧+白球间距。
-   * 推完后若球心不在「当前层缝隙」可下落区间内，下落判定会永远失败——再把 bx 夹回缝里（与 tryFallThroughGap 一致）。
-   */
-  function clampBxIntoGapForFall() {
-    if (gs.blackFalling || gs.row >= ROWS - 1) return false;
-    const {rBall, gapW} = L;
-    const gap = gaps[gs.row];
-    if (!gap) return false;
-    const xc = gap.xc;
-    const gl = gap.xc - gapW / 2;
-    const gr = gap.xc + gapW / 2;
-    const inset = rBall * 0.2;
-    let lo = gl + inset + 0.25 * DPR;
-    let hi = gr - inset - 0.25 * DPR;
-    if (lo >= hi) return false;
-    if (gs.bx < xc) {
-      hi = Math.min(hi, xc - 0.35 * DPR);
-    } else if (gs.bx > xc) {
-      lo = Math.max(lo, xc + 0.35 * DPR);
-    }
-    if (lo >= hi) return false;
-    let ch = false;
-    if (gs.bx < lo) { gs.bx = lo; ch = true; }
-    else if (gs.bx > hi) { gs.bx = hi; ch = true; }
-    return ch;
-  }
-
-  function clampBlackBallSpringRoom() {
-    const {rBall, railL, railR} = L;
-    const pad = 2 * rBall + rBall * 0.35 + 14 * DPR;
-
-    // 首先检查：如果黑球当前在坡道的斜坡段（非平台），移到最近的可站稳位置
-    let onRampSlope = false;
-    for (const ramp of ramps) {
-      if (ramp.row !== gs.row) continue;
-
-      const xLeft = ramp.xc - ramp.w/2;
-      const xSlopeTopLeft = xLeft + ramp.slopeW;  // 上坡顶（平台左）
-      const xSlopeTopRight = xSlopeTopLeft + ramp.flatW;  // 平台右
-      const xRight = ramp.xc + ramp.w/2;
-
-      // 黑球在上坡段：移到平台左边缘
-      if (gs.bx >= xLeft && gs.bx < xSlopeTopLeft) {
-        gs.bx = xSlopeTopLeft;
-        onRampSlope = true;
-        break;
-      }
-      // 黑球在下坡段：移到平台右边缘
-      else if (gs.bx > xSlopeTopRight && gs.bx <= xRight) {
-        gs.bx = xSlopeTopRight;
-        onRampSlope = true;
-        break;
-      }
-    }
-
-    // 迭代调整位置，直到稳定（处理贴墙情况）
-    for (let i = 0; i < 20; i++) {
-      refreshSpringSide();
-      const wx0 = whiteBallRestX(gs.springSide, 0);
-      let targetBx = gs.bx;
-      let needsMove = false;
-
-      if (gs.springSide === "left") {
-        const minBx = wx0 + pad;
-        if (gs.bx < minBx) {
-          targetBx = minBx;
-          needsMove = true;
-        }
-      } else {
-        const maxBx = wx0 - pad;
-        if (gs.bx > maxBx) {
-          targetBx = maxBx;
-          needsMove = true;
-        }
-      }
-
-      if (!needsMove) break;
-
-      // 检查目标位置是否在斜坡上
-      // 如果在上坡段，移到平台顶部（最近的可站稳位置）
-      // 如果在下坡段，移到平台顶部或坡度外
-      let adjustedBx = targetBx;
-
-      for (const ramp of ramps) {
-        if (ramp.row !== gs.row) continue;
-
-        const xLeft = ramp.xc - ramp.w/2;
-        const xSlopeTopLeft = xLeft + ramp.slopeW;  // 上坡顶（平台左）
-        const xSlopeTopRight = xSlopeTopLeft + ramp.flatW;  // 平台右
-        const xRight = ramp.xc + ramp.w/2;
-
-        // 目标在上坡段：移到平台左边缘（最近的可站稳位置）
-        if (targetBx >= xLeft && targetBx < xSlopeTopLeft) {
-          adjustedBx = xSlopeTopLeft;  // 平台左边缘，可站稳
-          break;
-        }
-        // 目标在平台段：可以停留
-        else if (targetBx >= xSlopeTopLeft && targetBx <= xSlopeTopRight) {
-          adjustedBx = targetBx;  // 已经在平台上
-          break;
-        }
-        // 目标在下坡段：移到平台右边缘或更外
-        else if (targetBx > xSlopeTopRight && targetBx <= xRight) {
-          adjustedBx = xSlopeTopRight;  // 平台右边缘
-          break;
-        }
-      }
-
-      targetBx = adjustedBx;
-
-      // 应用位置，限制在边界内（画布边缘 0 到 W）
-      gs.bx = Math.max(rBall, Math.min(W - rBall, targetBx));
-
-      // 如果位置没有实质改变，退出循环
-      if (Math.abs(gs.bx - targetBx) < 0.1) break;
-    }
-
-    refreshSpringSide();
-  }
-
-  function smoothstep(t){ t=Math.max(0,Math.min(1,t)); return t*t*(3-2*t); }
-  function lerp(a,b,t){ return a+(b-a)*t; }
-  function lerpColor(c1,c2,t){
-    const p = s=>parseInt(s.slice(1),16);
-    const a=p(c1),b=p(c2);
-    const r = (v,sh)=>(v>>sh)&255;
-    return `rgb(${Math.round(lerp(r(a,16),r(b,16),t))},${Math.round(lerp(r(a,8),r(b,8),t))},${Math.round(lerp(r(a,0),r(b,0),t))})`;
-  }
-
-  // 辅助函数：绘制圆角矩形
-  function roundRect(ctx, x, y, width, height, radius) {
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.lineTo(x + width - radius, y);
-    ctx.arcTo(x + width, y, x + width, y + radius, radius);
-    ctx.lineTo(x + width, y + height - radius);
-    ctx.arcTo(x + width, y + height, x + width - radius, y + height, radius);
-    ctx.lineTo(x + radius, y + height);
-    ctx.arcTo(x, y + height, x, y + height - radius, radius);
-    ctx.lineTo(x, y + radius);
-    ctx.arcTo(x, y, x + radius, y, radius);
-    ctx.closePath();
-  }
-
-  function applyFriction(v, frictionStrength=0) {
-    let f = Math.abs(v) < SLOW_THRESH ? FRICTION_SLOW : FRICTION_FAST;
-    // 根据摩擦力强度调整摩擦系数
-    // strength 0.3 弱沙地：10%衰减；strength 1.0 强沙地：20%衰减
-    if (frictionStrength > 0) {
-      const frictionMultiplier = 1 - (0.1 + frictionStrength * 0.1);
-      f *= frictionMultiplier;
-    }
-    const nv = v * f;
-    return Math.abs(nv) < STOP_EPS*0.05 ? 0 : nv;
-  }
-
-  // 应用坡度重力（让球在坡上自然滑下）
-  function applyRampGravity(bx, row, vx) {
-    const rampInfo = getRampInfo(bx, row);
-    if (rampInfo.heightOffset === 0) return vx; // 不在坡上
-
-    // 找到当前坡度以确定方向
-    for (const ramp of ramps) {
-      if (ramp.row !== row) continue;
-      const xLeft = ramp.xc - ramp.w/2;
-      const xSlopeTopLeft = xLeft + ramp.slopeW;
-      const xSlopeTopRight = xSlopeTopLeft + ramp.flatW;
-      const xRight = ramp.xc + ramp.w/2;
-
-      // 上坡段：重力向左下（减速或回退）
-      if (bx >= xLeft && bx < xSlopeTopLeft) {
-        // 坡度角：上升 ramp.h 需要移动 slopeW
-        const slopeRatio = ramp.h / ramp.slopeW;
-        // 重力分量向左（下坡方向）
-        const gravityForce = -GRAVITY * DPR * slopeRatio * 0.5;
-        return vx + gravityForce * 0.016; // 假设60fps，约0.016秒每帧
-      }
-      // 下坡段：重力向右下（加速）
-      if (bx >= xSlopeTopRight && bx < xRight) {
-        const slopeRatio = ramp.h / ramp.slopeW;
-        const gravityForce = GRAVITY * DPR * slopeRatio * 0.5;
-        return vx + gravityForce * 0.016;
-      }
-      // 平台段：无明显重力影响，只有摩擦力
-    }
-    return vx;
-  }
-
-  // 检测球是否在高摩擦区域，返回摩擦力强度（0-1），不在区域内返回0
-  function getSandFrictionStrength(bx, row) {
-    const zone = sandZones[row];
-    if (!zone) return 0;
-    const halfW = zone.w / 2;
-    if (bx > zone.xc - halfW && bx < zone.xc + halfW) {
-      return zone.strength; // 返回该区域的摩擦力强度
-    }
-    return 0;
-  }
-
-  // 检测球是否在坡度上，返回对应段的摩擦力强度和高度偏移
-  function getRampInfo(bx, row) {
-    for (const ramp of ramps) {
-      if (ramp.row !== row) continue;
-
-      // 计算三段边界（对称坡度）
-      const xLeft = ramp.xc - ramp.w/2;           // 左端（坡底）
-      const xSlopeTopLeft = xLeft + ramp.slopeW;  // 上坡顶/平台左
-      const xSlopeTopRight = xSlopeTopLeft + ramp.flatW;  // 平台右/下坡顶
-      const xRight = ramp.xc + ramp.w/2;          // 右端（坡底）
-
-      // 上坡段（从左底到坡顶）
-      if (bx >= xLeft && bx < xSlopeTopLeft) {
-        const progress = (bx - xLeft) / ramp.slopeW;  // 0到1
-        const height = -ramp.h * progress;  // 负值表示向上（Y减小）
-        return { strength: ramp.upStrength, heightOffset: height };
-      }
-      // 平台段
-      if (bx >= xSlopeTopLeft && bx < xSlopeTopRight) {
-        return { strength: ramp.flatStrength, heightOffset: -ramp.h };
-      }
-      // 下坡段（从坡顶到右底）
-      if (bx >= xSlopeTopRight && bx < xRight) {
-        const progress = (bx - xSlopeTopRight) / ramp.slopeW;  // 0到1
-        const height = -ramp.h * (1 - progress);  // 从坡顶降到底
-        return { strength: ramp.downStrength, heightOffset: height };
-      }
-    }
-    return { strength: 0, heightOffset: 0 };
-  }
-
-  // 获取坡度摩擦力强度（兼容旧代码）
-  function getRampFrictionStrength(bx, row) {
-    return getRampInfo(bx, row).strength;
-  }
-
-  // 获取球在坡度上的Y坐标偏移（用于绘制）
-  function getRampHeightOffset(bx, row) {
-    return getRampInfo(bx, row).heightOffset;
-  }
-
-  function resolveWalls(x, v) {
-    const {railL,railR,rBall} = L;
-    // 球可以贴到画布边缘（0 和 W），导轨蓝线也是画到边缘的
-    if (x < rBall){ x=rBall; v= Math.abs(v)*WALL_REST; }
-    if (x > W-rBall){ x=W-rBall; v=-Math.abs(v)*WALL_REST; }
-    return [x,v];
-  }
-
-  /**
-   * 弹簧端面 = 竖直挡板。必须区分「球心在端面哪一侧」，否则会误伤发射中的白球：
-   * 左簧发射时白球在 fx 右侧且 v>0，若写成「只要 x+rBall>fx 且 v>0」会把球弹回墙内。
-   */
-  function resolveSpringWall(x, v, side) {
-    if (gs.charging) return [x,v];
-    const fx = springFaceX(side, 0);
-    const {rBall} = L;
-    if (side === "left") {
-      if (x > fx && x - rBall < fx && v < 0) {
-        x = fx + rBall;
-        v = Math.abs(v) * SPRING_REST;
-      } else if (x < fx && x + rBall > fx && v > 0) {
-        x = fx - rBall;
-        v = -Math.abs(v) * SPRING_REST;
-      }
-    } else {
-      if (x < fx && x + rBall > fx && v > 0) {
-        x = fx - rBall;
-        v = -Math.abs(v) * SPRING_REST;
-      } else if (x > fx && x - rBall < fx && v < 0) {
-        x = fx + rBall;
-        v = Math.abs(v) * SPRING_REST;
-      }
-    }
-    return [x,v];
-  }
-
-  /**
-   * 等质量、一维完全弹性：正面对心时白球会把速度交给黑球而自身停下（动量守恒）。
-   * 侧视单轨玩法里玩家普遍期待「母球会弹回」——与纯一维模型不同，真实台面是斜碰。
-   * 在法向弹性冲量之后，给白球沿 -n 方向的额外回弹分量，模拟母球带走的反向分速度。
-   */
-  const BALL_RESTITUTION = 1;
-  const CUE_REBOUND = 0.38;
-
-  // 获取球的世界坐标（考虑坡度高度）
-  function getBallWorldPos(bx, row, isFalling) {
-    const baseY = ballY(row);
-    if (isFalling) return { x: bx, y: baseY };
-    const rampOffset = getRampHeightOffset(bx, row);
-    return { x: bx, y: baseY + rampOffset };
-  }
-
-  // 扫掠碰撞检测：处理高速白球穿过黑球的情况（tunneling）
-  function resolveCollisionSwept(prevWx) {
-    if (!gs.wExists || gs.blackFalling) return;
-    const {rBall} = L;
-
-    // 获取当前世界坐标（考虑坡度高度）
-    const whitePos = getBallWorldPos(gs.wx, gs.row, false);
-    const blackPos = getBallWorldPos(gs.bx, gs.row, false);
-    const prevWhitePos = getBallWorldPos(prevWx, gs.row, false);
-
-    // 计算3D距离（考虑高度差）
-    const dx = blackPos.x - whitePos.x;
-    const dy = blackPos.y - whitePos.y;
-    const dist = Math.sqrt(dx*dx + dy*dy);
-
-    // 如果当前位置已碰撞（3D距离小于2倍半径），直接处理
-    if (dist < 2 * rBall) {
-      resolveCollisionDirect3D(whitePos, blackPos);
-      return;
-    }
-
-    // 扫掠检测：检查白球从 prevWx 到 currWx 的路径是否穿过黑球（3D）
-    const vx = whitePos.x - prevWhitePos.x;  // 白球本帧位移
-    const vy = whitePos.y - prevWhitePos.y;
-    const moveDist = Math.sqrt(vx*vx + vy*vy);
-
-    if (moveDist < 2 * rBall) return;  // 速度不够快，不需要扫掠检测
-
-    // 检查白球路径是否与黑球相交（3D球体碰撞）
-    // 使用线段与球的最短距离检测
-    const pathStart = prevWhitePos;
-    const pathEnd = whitePos;
-
-    // 计算黑球到白球路径线段的最短距离
-    const closestPoint = closestPointOnSegment(blackPos, pathStart, pathEnd);
-    const distToPath = distance3D(blackPos, closestPoint);
-
-    if (distToPath < 2 * rBall) {
-      // 扫掠碰撞发生！
-      // 计算碰撞法线（从黑球指向白球路径最近点）
-      const nx = (closestPoint.x - blackPos.x) / Math.max(distToPath, 1e-6);
-
-      // 将白球放在碰撞点外侧
-      gs.wx = blackPos.x - nx * 2 * rBall * 0.98;
-      // 黑球稍微反弹
-      gs.bx += nx * rBall * 0.3;
-
-      // 应用碰撞冲量
-      const wvx0 = gs.wvx, bvx0 = gs.bvx;
-      const vrelN = (wvx0 - bvx0) * nx;
-      if (vrelN > 0) {
-        const j = -(1 + BALL_RESTITUTION) * vrelN * 0.5;
-        gs.wvx += j * nx;
-        gs.bvx -= j * nx;
-        gs.wvx += CUE_REBOUND * vrelN * (-nx);
-      }
-    }
-  }
-
-  // 计算点到线段上的最近点
-  function closestPointOnSegment(p, a, b) {
-    const ab = { x: b.x - a.x, y: b.y - a.y };
-    const ap = { x: p.x - a.x, y: p.y - a.y };
-    const abLen2 = ab.x*ab.x + ab.y*ab.y;
-
-    if (abLen2 < 1e-10) return a;  // 线段退化为点
-
-    let t = (ap.x*ab.x + ap.y*ab.y) / abLen2;
-    t = Math.max(0, Math.min(1, t));  // 限制在线段内
-
-    return {
-      x: a.x + t * ab.x,
-      y: a.y + t * ab.y
-    };
-  }
-
-  // 计算3D距离
-  function distance3D(a, b) {
-    const dx = a.x - b.x;
-    const dy = a.y - b.y;
-    return Math.sqrt(dx*dx + dy*dy);
-  }
-
-  // 直接碰撞处理3D版本（考虑坡度高度）
-  function resolveCollisionDirect3D(whitePos, blackPos) {
-    if (!gs.wExists || gs.blackFalling) return;
-    const {rBall} = L;
-
-    const dx = blackPos.x - whitePos.x;
-    const dy = blackPos.y - whitePos.y;
-    const dist = Math.sqrt(dx*dx + dy*dy);
-
-    if (dist >= 2 * rBall) return;
-
-    const nx = dx / Math.max(dist, 1e-6);
-    const overlap = 2 * rBall - dist + 0.35 * DPR;
-
-    // 只在X轴分离（保持高度）
-    gs.wx -= nx * overlap * 0.5;
-    gs.bx += nx * overlap * 0.5;
-
-    const wvx0 = gs.wvx, bvx0 = gs.bvx;
-    const vrelN = (wvx0 - bvx0) * nx;
-    if (vrelN <= 0) return;
-
-    const j = -(1 + BALL_RESTITUTION) * vrelN * 0.5;
-    gs.wvx += j * nx;
-    gs.bvx -= j * nx;
-    gs.wvx += CUE_REBOUND * vrelN * (-nx);
-  }
-
-  // 保持向后兼容的直接碰撞检测
-  function resolveCollisionDirect() {
-    if (!gs.wExists || gs.blackFalling) return;
-    const whitePos = getBallWorldPos(gs.wx, gs.row, false);
-    const blackPos = getBallWorldPos(gs.bx, gs.row, false);
-    resolveCollisionDirect3D(whitePos, blackPos);
-  }
-
-  // 保持向后兼容
-  function resolveCollision() {
-    resolveCollisionDirect();
-  }
-
-  // ========== 道具包系统 ==========
-  const SPRING_TRIGGER_RANGE = 1.2; // 1.2倍球径触发弹簧
-  const SPRING_ACTIVE_MS = 300; // 300ms活跃窗口
-  const SPRING_POP_VELOCITY = -1200; // 向上弹起速度（负Y方向）
-  const BOOST_RANGE = 3.0; // 3倍球径加速轨道范围
-
-  // 更新道具包计时器和弹簧触发状态
-  function updateItemBoxes(dt) {
-    const now = performance.now();
-
-    for (const box of itemBoxes) {
-      // 初始化状态字段
-      if (box.springActive === undefined) box.springActive = false;
-      if (box.springEndTime === undefined) box.springEndTime = 0;
-      if (box.poppedBalls === undefined) box.poppedBalls = new Set();
-
-      // 更新计时器
-      box.timer += dt;
-      if (box.timer >= 15) {
-        box.timer = 0;
-        box.springActive = false;
-        box.poppedBalls.clear();
-      }
-
-      const phase = box.timer % 15;
-      const isStateB = phase >= 5; // 5-15秒是弹簧状态
-
-      if (isStateB && (box.row === gs.row || (gs.wExists && box.row === gs.wRow))) {
-        // 弹簧状态：检查球是否接近触发
-        const triggerDist = L.rBall * SPRING_TRIGGER_RANGE;
-
-        // 黑球触发检测（必须在地面上，且道具包在黑球所在行）
-        const blackOnGround = !gs.blackFalling && Math.abs(gs.bvy) < 50;
-        const blackDist = Math.abs(gs.bx - box.xc);
-        const blackCanTrigger = blackOnGround && blackDist < triggerDist && box.row === gs.row;
-
-        // 白球触发检测（必须在地面上且存在，且道具包在白球所在行）
-        const whiteOnGround = gs.wExists && !gs.whiteFalling && Math.abs(gs.wvy) < 50;
-        const whiteDist = gs.wExists ? Math.abs(gs.wx - box.xc) : Infinity;
-        const whiteCanTrigger = whiteOnGround && whiteDist < triggerDist && box.row === gs.wRow;
-
-        // 触发弹簧：球接近时开启300ms活跃窗口
-        if ((blackCanTrigger || whiteCanTrigger) && !box.springActive) {
-          box.springActive = true;
-          box.springEndTime = now + SPRING_ACTIVE_MS;
-          box.poppedBalls.clear();
-        }
-      } else if (!isStateB) {
-        // 状态A时关闭弹簧
-        box.springActive = false;
-      }
-
-      // 检查活跃窗口是否过期
-      if (box.springActive && now >= box.springEndTime) {
-        box.springActive = false;
-      }
-    }
-  }
-
-  // 应用弹簧物理效果：强制赋予向上速度（当前层内弹跳，不下落）
-  function applySpringForces() {
-    const now = performance.now();
-    const popV = SPRING_POP_VELOCITY * DPR;
-    const triggerDist = L.rBall * 1.5; // 统一使用1.5倍球径作为触发范围
-
-    for (const box of itemBoxes) {
-      // 检查道具包是否对黑球或白球有效（可能在不同层）
-      const blackCanHit = box.row === gs.row;
-      const whiteCanHit = gs.wExists && box.row === gs.wRow;
-      if (!blackCanHit && !whiteCanHit) continue;
-      if (!box.springActive) continue;
-      if (now >= box.springEndTime) continue;
-
-      // 黑球弹簧效果：赋予向上速度（当前层内弹跳）
-      if (blackCanHit) {
-        const blackDist = Math.abs(gs.bx - box.xc);
-        if (blackDist < triggerDist && !box.poppedBalls.has('b')) {
-          gs.bvy = popV; // 强制向上速度，绝不为0！
-          box.poppedBalls.add('b');
-          // 不进入falling模式，保持当前层
-        }
-      }
-
-      // 白球弹簧效果：与黑球完全一致的判定范围和物理效果
-      if (gs.wExists && whiteCanHit) {
-        const whiteDist = Math.abs(gs.wx - box.xc);
-        if (whiteDist < triggerDist && !box.poppedBalls.has('w')) {
-          gs.wvy = popV; // 强制向上速度，绝不为0！
-          box.poppedBalls.add('w');
-          // 白球同样在当前层内弹跳
-        }
-      }
-    }
-  }
-
-  // 更新垂直弹跳物理（当前层内）
-  function updateVerticalBounce(dt) {
-    const g = GRAVITY * DPR;
-    const {rBall, rowH} = L;
-    const blackFloorY = ballY(gs.row); // 黑球当前行地面高度
-    const blackCeilingY = blackFloorY - rowH * 0.85; // 黑球天花板
-
-    // 黑球垂直运动
-    if (Math.abs(gs.bvy) > 1 || gs.by < blackFloorY - 1) {
-      // 应用重力
-      gs.bvy += g * dt;
-      gs.by += gs.bvy * dt;
-
-      // 天花板碰撞：不能超过当前层顶部
-      if (gs.by < blackCeilingY + rBall) {
-        gs.by = blackCeilingY + rBall;
-        gs.bvy = Math.abs(gs.bvy) * 0.3; // 向下反弹，能量损失
-      }
-
-      // 地面碰撞：回到当前行地面（考虑坡道高度）
-      const blackRampOffset = getRampHeightOffset(gs.bx, gs.row);
-      const actualFloorY = blackFloorY + blackRampOffset;
-      if (gs.by >= actualFloorY) {
-        gs.by = actualFloorY;
-        gs.bvy = 0; // 停止垂直运动
-      }
-    } else {
-      // 垂直速度很小，直接接地（考虑坡道高度）
-      const blackRampOffset = getRampHeightOffset(gs.bx, gs.row);
-      gs.by = blackFloorY + blackRampOffset;
-      gs.bvy = 0;
-    }
-
-    // 白球垂直运动（使用独立的 wRow 计算高度）
-    if (gs.wExists) {
-      const whiteFloorY = ballY(gs.wRow); // 白球自己所在行的地面高度
-      const whiteCeilingY = whiteFloorY - rowH * 0.85; // 白球自己所在行的天花板
-
-      if (Math.abs(gs.wvy) > 1 || gs.wy < whiteFloorY - 1) {
-        // 应用重力
-        gs.wvy += g * dt;
-        gs.wy += gs.wvy * dt;
-
-        // 天花板碰撞（使用白球自己的天花板）
-        if (gs.wy < whiteCeilingY + rBall) {
-          gs.wy = whiteCeilingY + rBall;
-          gs.wvy = Math.abs(gs.wvy) * 0.3; // 向下反弹
-        }
-
-        // 地面碰撞（使用白球自己的地面高度）
-        if (gs.wy >= whiteFloorY) {
-          gs.wy = whiteFloorY;
-          gs.wvy = 0;
-        }
-      } else {
-        gs.wy = whiteFloorY;
-        gs.wvy = 0;
-      }
-    }
-  }
-
-  // 应用加速轨道效果（状态A）
-  function applyBoostEffects(dt) {
-    const boostDist = L.rBall * BOOST_RANGE;
-
-    for (const box of itemBoxes) {
-      if (box.row !== gs.row) continue;
-
-      const phase = box.timer % 15;
-      const isStateA = phase < 5;
-      if (!isStateA) continue;
-
-      // 黑球加速
-      const blackDist = Math.abs(gs.bx - box.xc);
-      const blackOnGround = !gs.blackFalling && Math.abs(gs.bvy) < 50;
-      if (blackDist < boostDist && blackOnGround && !gs.hasBoosted) {
-        if (Math.abs(gs.bvx) < 0.1) {
-          gs.bvx = L.railW * 0.2 * (gs.lastDir || 1);
-        } else {
-          gs.bvx *= 2;
-        }
-        gs.hasBoosted = true;
-      }
-
-      // 白球加速
-      if (gs.wExists) {
-        const whiteDist = Math.abs(gs.wx - box.xc);
-        const whiteOnGround = !gs.whiteFalling && Math.abs(gs.wvy) < 50;
-        if (whiteDist < boostDist && whiteOnGround && !gs.hasBoosted) {
-          if (Math.abs(gs.wvx) < 0.1) {
-            gs.wvx = L.railW * 0.2 * (gs.lastDir || 1);
-          } else {
-            gs.wvx *= 2;
-          }
-          gs.hasBoosted = true;
-        }
-      }
-    }
-  }
-
-  // 检查是否离开所有道具包，重置加速标记
-  function resetBoostIfLeftBoxes() {
-    const boostDist = L.rBall * BOOST_RANGE;
-    let inAnyBoostBox = false;
-
-    for (const box of itemBoxes) {
-      const phase = box.timer % 15;
-      if (phase >= 5) continue; // 只检查状态A
-
-      // 黑球在白球所在层的道具包中？
-      const blackInBox = box.row === gs.row && Math.abs(gs.bx - box.xc) < boostDist;
-      // 白球在白球所在层的道具包中？
-      const whiteInBox = gs.wExists && box.row === gs.wRow && Math.abs(gs.wx - box.xc) < boostDist;
-
-      if (blackInBox || whiteInBox) {
-        inAnyBoostBox = true;
-        break;
-      }
-    }
-
-    if (!inAnyBoostBox) {
-      gs.hasBoosted = false;
-    }
-  }
-
-  // 更新最后移动方向（用于静止时的加速方向兜底）
-  function updateLastDir() {
-    if (Math.abs(gs.bvx) > 0.1) {
-      gs.lastDir = gs.bvx > 0 ? 1 : -1;
-    }
-  }
-
-  // ── GAP FALL: check FIRST each frame, skip all wall resolution if triggered ──
-  /**
-   * 本帧位移前球心 prevBx → 位移后 gs.bx。
-   * 若速度太快（|bvx| > vSkip），抛物线会跳过缝隙，直接飞过不下落。
-   * 速度适中时，球心落在 (lo,hi) 内或扫过区间，则正常下落。
-   */
-  function tryFallThroughGap(prevBx) {
-    if (gs.blackFalling || gs.row >= ROWS - 1) return false;
-    const {rBall,gapW,rowH} = L;
-    const gap = gaps[gs.row];
-    const gl  = gap.xc - gapW/2;
-    const gr  = gap.xc + gapW/2;
-
-    const inset = rBall * 0.2;
-    const lo = gl + inset;
-    const hi = gr - inset;
-    if (lo >= hi) return false;
-
-    // 计算"跳过"速度阈值：v > gapW / sqrt(2*rowH/g)
-    // 超过此速度，抛物线轨迹会跳过缝隙，球直接飞过不下落
-    const g = GRAVITY * DPR;
-    const fallTime = Math.sqrt(2 * rowH / g);
-    const vSkip = (gapW / fallTime) * 1.15; // 留15%余量
-
-    // 速度太快 → 跳过缝隙（飞过不下落）
-    if (Math.abs(gs.bvx) > vSkip) {
-      return false;
-    }
-
-    const bx = gs.bx;
-    const inside = bx > lo && bx < hi;
-    let swept = false;
-    if (typeof prevBx === "number" && isFinite(prevBx)) {
-      const smin = Math.min(prevBx, bx);
-      const smax = Math.max(prevBx, bx);
-      swept = smax > lo && smin < hi;
-    }
-    if (!inside && !swept) return false;
-
-    if (swept && !inside) {
-      const smin = Math.min(prevBx, bx);
-      const smax = Math.max(prevBx, bx);
-      const a = Math.max(smin, lo);
-      const b = Math.min(smax, hi);
-      let sx = (a + b) * 0.5;
-      const eps = 0.02 * DPR;
-      gs.bx = Math.max(lo + eps, Math.min(hi - eps, sx));
-    }
-
-    gs.blackFalling = true;
-    gs.fallTime = 0;
-    gs.fallY0   = ballY(gs.row);
-    gs.fallVx   = gs.bvx;
-    gs.fallV0   = 0; // 缝隙下落：初始垂直速度为0
-    gs.bvx      = 0;
-    return true;
-  }
-
-  /**
-   * 触发弹簧弹起抛物线运动
-   * 当弹簧赋予球向上速度时调用
-   */
-  function triggerSpringFall(vy, isBlack = true) {
-    if (gs.row >= ROWS - 1) return false;
-    if (isBlack) {
-      if (gs.blackFalling) return false;
-      gs.blackFalling = true;
-    } else {
-      if (gs.whiteFalling) return false;
-      gs.whiteFalling = true;
-    }
-    gs.fallTime = 0;
-    gs.fallY0 = ballY(gs.row);
-    gs.fallVx = gs.bvx * 0.8; // 保持大部分水平速度
-    gs.fallV0 = vy; // 初始垂直速度（弹簧赋予的向上速度）
-    gs.bvx = 0;
-    return true;
-  }
-
-  /**
-   * 不再对缝隙左右缘做「立柱反弹」：否则会把球钉在 gl-rBall / gr+rBall，
-   * 球心永远无法进入缝隙区间，tryFallThroughGap 永远不会触发（表现为黑球过不了缝）。
-   * 进缝、过缝、快滚跳过 全部由 tryFallThroughGap + 抛物线下落处理即可。
-   */
-
-  function updateFall(dt) {
-    if (gs.row >= ROWS - 1) {
-      gs.blackFalling = false;
-      gs.bvy = 0;
-      return ballY(gs.row);
-    }
-
-    gs.fallTime += dt;
-    const g = GRAVITY * DPR;
-    const {railL,railR,rBall,rowH} = L;
-
-    // 使用完整的抛体运动公式：y = y0 + v0*t + 0.5*g*t^2
-    // 支持初始向上速度（弹簧弹起）或向下速度
-    const v0 = gs.fallV0 || 0; // 初始垂直速度（弹簧弹起时为负值）
-    const y = gs.fallY0 + v0 * gs.fallTime + 0.5 * g * gs.fallTime * gs.fallTime;
-
-    // 钉子碰撞检测（仅下落过程中，且球在钉子附近Y坐标时）
-    const nail = nails.find(n => n.row === gs.row);
-    if (nail && !gs.nailHit) {
-      const dx = gs.bx - nail.x;
-      const dy = y - nail.y;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      if (dist < rBall + nail.r) {
-        gs.nailHit = true;
-        const bounceDir = dx < 0 ? -1 : 1;
-        const bounceForce = (L.railW * 0.6 + Math.random() * L.railW * 0.4) * bounceDir;
-        gs.fallVx = bounceForce;
-        // 钉子碰撞给一个向上的冲量
-        gs.fallTime = 0;
-        gs.fallY0 = y;
-        gs.fallV0 = -Math.abs(v0) * 0.5 - L.railW * 0.3; // 向上反弹
-      }
-    }
-
-    // 水平墙壁碰撞（画布边缘 0 到 W）
-    gs.bx += gs.fallVx * dt;
-    if (gs.bx < rBall){ gs.bx=rBall; gs.fallVx= Math.abs(gs.fallVx)*WALL_REST; }
-    if (gs.bx > W-rBall){ gs.bx=W-rBall; gs.fallVx=-Math.abs(gs.fallVx)*WALL_REST; }
-
-    // 落地判定：落到下一行的高度
-    const nextRow = Math.min(gs.row + 1, ROWS - 1);
-    const targetY = ballY(nextRow);
-
-    // 只有当球落到目标行高度以下，且垂直速度向下时才结束下落
-    const vy = v0 + g * gs.fallTime;
-
-    if (y >= targetY && vy > 0) {
-      gs.blackFalling = false;
-      gs.row = Math.min(ROWS - 1, gs.row+1);
-      gs.nailHit = false;
-      gs.bx = Math.max(rBall, Math.min(W-rBall, gs.bx));
-
-      // 落地后保留水平速度，重置垂直速度
-      gs.bvx = gs.fallVx * 0.62;
-      gs.bvy = 0;
-      gs.fallTime = 0;
-      gs.fallV0 = 0;
-
-      console.log(`第${gs.row+1}行：成功落地！尝试${gs.rowAttempts}次`);
-      showFlower();
-      gs.rowAttempts = 0;
-      gs.penaltyApplied = false;
-      return targetY;
-    }
-
-    return y;
-  }
-
-  function checkExit() {
-    if (gs.row !== ROWS - 1 || gs.winning) return;
-    const {railR,rBall,exitW,exitInset} = L;
-    const exitLeft = railR-exitInset-exitW;
-    if (gs.bvx>0 && gs.bx+rBall>exitLeft && gs.bx>W-rBall*2.2) {
-      gs.winning=true; gs.winT=0;
-      gs.bvx=0; if(gs.wExists) gs.wvx=0;
-      showWinOverlay();
-    }
-  }
-
-  function maybeEndShot() {
-    if (gs.winning || gs.blackFalling || gs.whiteFalling) return;
-    if (Math.abs(gs.bvx) >= STOP_EPS) return;
-    if (gs.wExists && (Math.abs(gs.wvx) >= STOP_EPS || Math.abs(gs.wvy) >= STOP_EPS)) return;
-    gs.bvx = 0;
-    gs.bvy = 0;  // 重置黑球垂直速度
-    if (gs.wExists){ gs.wvx=0; gs.wvy=0; gs.wExists=false; }  // 重置白球垂直速度
-    // 实时扣分：这次出杆没有落到缝隙，扣10分（只扣一次）
-    if (gs.rowAttempts > 0 && !gs.penaltyApplied) {
-      gs.score = Math.max(0, gs.score - 10);
-      gs.penaltyApplied = true;  // 标记已扣分，防止重复扣
-      console.log(`第${gs.row+1}行第${gs.rowAttempts}次尝试失败，扣分-10，当前分数：${gs.score}`);
-      // 分数扣完且未通关，判定失败（无论在哪个位置）
-      if (gs.score <= 0 && !gs.winning) {
-        gs.gameOver = true;
-        console.log("游戏失败！分数已耗尽");
-        showLoseOverlay();
-      } else {
-        showAngryPopup();
-      }
-    }
-    clampBlackBallSpringRoom();
-    updatePads();
-  }
-
-  function fireWhiteBall(side, chargeT) {
-    let v0;
-    let compress;
-    const dir  = side==="left" ? 1 : -1;
-
-    if (chargeT <= 1) {
-      // 正常蓄力阶段（0-100%）
-      const t = smoothstep(chargeT);
-      const vMax = L.railW * 1.75;
-      v0 = vMax * (0.12 + 0.88 * t);
-      compress = L.springNatLen * 0.36 * t;
-    } else {
-      // 超充能阶段（>100%）：力量无上限增长
-      // 基础力量 + 超充能额外力量（二次增长，越往后越猛）
-      const overCharge = chargeT - 1;  // 超出100%的部分
-      const vMax = L.railW * 1.75;
-      const baseV = vMax;  // 基础最大力量
-      // 超充能：每多蓄100%，力量增加50%，且增长加速
-      const extraV = vMax * (0.5 * overCharge + 0.3 * overCharge * overCharge);
-      v0 = baseV + extraV;
-      // 弹簧压缩到极限后不再继续压缩（物理限制）
-      compress = L.springNatLen * 0.4;
-    }
-
-    gs.wx  = whiteBallRestX(side, compress);
-    gs.wy  = ballY(gs.row); // 初始化Y位置
-    gs.wRow = gs.row; // 白球和黑球在同一行发射
-    gs.wvx = dir * v0;
-    gs.wvy = 0; // 初始垂直速度为0
-    gs.wExists = true;
-    // 计分：记录本次发射是当前行的第几次尝试
-    gs.rowAttempts++;
-    gs.penaltyApplied = false;  // 新的一次尝试，重置扣分标记
-  }
-
-  function isReady() {
-    return !gs.winning && !gs.gameOver && !gs.blackFalling && !gs.whiteFalling && !gs.charging &&
-           Math.abs(gs.bvx) < STOP_EPS && Math.abs(gs.bvy) < STOP_EPS &&
-           (!gs.wExists || (Math.abs(gs.wvx) < STOP_EPS && Math.abs(gs.wvy) < STOP_EPS));
-  }
-  function updatePads() {
-    const ready = isReady();
-    padL.classList.toggle("disabled", !(ready && gs.springSide==="left"));
-    padR.classList.toggle("disabled", !(ready && gs.springSide==="right"));
-  }
-
-  function startCharge(side) {
-    if (!isReady() || side!==gs.springSide) return;
-    gs.charging=true; gs.chargeSide=side;
-    gs.chargeStart=performance.now(); gs.chargeT=0;
-    (side==="left"?padL:padR).classList.add("pressing");
-    updatePads();
-  }
-  function endCharge() {
-    if (!gs.charging) return;
-    const side = gs.chargeSide;
-    const chargeT = gs.chargeT;
-    // 立即重置状态，防止后续操作失败导致状态卡住
-    gs.charging=false; gs.chargeSide=null; gs.chargeT=0;
-    padL.classList.remove("pressing"); padR.classList.remove("pressing");
-    // 发射白球（最后一行始终左弹簧）
-    fireWhiteBall(side, chargeT);
-    gs.lastSpringSide=side;
-    updatePads();
-  }
-
-  function bindPad(el, side) {
-    el.addEventListener("pointerdown", e=>{
-      e.preventDefault();
-      el.setPointerCapture(e.pointerId);
-      startCharge(side);
-    }, {passive:false});
-    el.addEventListener("pointerup", e=>{
-      e.preventDefault();
-      if (el.hasPointerCapture(e.pointerId)) {
-        el.releasePointerCapture(e.pointerId);
-      }
-      endCharge();
-    }, {passive:false});
-    el.addEventListener("pointercancel", e=>{
-      if (el.hasPointerCapture(e.pointerId)) {
-        el.releasePointerCapture(e.pointerId);
-      }
-      endCharge();
-    });
-    // 保险机制：手指/鼠标移出按钮区域时也要释放
-    el.addEventListener("pointerleave", e=>{
-      if (gs.charging && gs.chargeSide===side) {
-        if (el.hasPointerCapture(e.pointerId)) {
-          el.releasePointerCapture(e.pointerId);
-        }
-        endCharge();
-      }
-    });
-    // 丢失指针捕获时也要释放
-    el.addEventListener("lostpointercapture", ()=>{
-      if (gs.charging && gs.chargeSide===side) {
-        endCharge();
-      }
-    });
-  }
-  bindPad(padL,"left"); bindPad(padR,"right");
-  resetBtn.addEventListener("click", resetGame);
-  window.addEventListener("resize", ()=>{ buildLayout(); resetGame(); });
-
-  function resetGame() {
-    buildLayout(); randomizeGaps();
-    Object.assign(gs, {
-      row:0, bx:0, by:0, bvx:0, bvy:0,
-      blackFalling:false, whiteFalling:false, fallTime:0, fallY0:0, fallVx:0, fallV0:0,
-      wx:0, wy:0, wvx:0, wvy:0, wExists:false, wRow:0,
-      charging:false, chargeT:0, chargeSide:null,
-      winning:false, winT:0, lastTs:0,
-      lastSpringSide:"left",
-      // 计分系统重置
-      score:100, rowAttempts:0, penaltyApplied:false, gameOver:false,
-      // 钉子碰撞标记
-      nailHit:false,
-      // 道具包系统重置
-      hasBoosted:false, lastDir:1,
-    });
-    // 初始位置：紧贴左墙边缘（缝隙最左在 marginFromWall 之后，约 3.8*rBall）
-    gs.bx = L.rBall * 1.2;
-    gs.by = ballY(0); // 初始化黑球Y位置
-    gs.wy = ballY(0); // 初始化白球Y位置
-    refreshSpringSide();
-    updatePads();
-    updateStatusUI(); // 小程序：初始化UI状态
-  }
-
-  function drawSpring(side, cy, chargeT) {
-    const {springNatLen,springAnchorOff,rBall} = L;
-    const t  = smoothstep(chargeT);
-    const compress = springNatLen*0.36*t;
-    const natLen   = springNatLen - compress;
-    const ax  = springAnchorX(side);
-    const fx  = springFaceX(side, compress);
-    const dir = side==="left" ? 1 : -1;
-
-    ctx.save();
-
-    // 弹簧颜色：蓄力时变橙色，否则灰色
-    const col = lerpColor("#CECECE","#F39A2E",t);
-    ctx.strokeStyle = col;
-    ctx.lineWidth = 1.1 * DPR;
-    ctx.lineCap = "round";
-
-    // 绘制固定端（墙边）
-    ctx.beginPath();
-    ctx.moveTo(ax, cy-rBall*0.72);
-    ctx.lineTo(ax, cy+rBall*0.72);
-    ctx.stroke();
-
-    // 绘制导向线
-    const ry = rBall*0.48*(1-0.42*t);
-    ctx.globalAlpha = 0.32;
-    ctx.beginPath();
-    ctx.moveTo(ax,cy-ry*0.55);
-    ctx.lineTo(fx,cy-ry*0.55);
-    ctx.moveTo(ax,cy+ry*0.55);
-    ctx.lineTo(fx,cy+ry*0.55);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    // 绘制线圈（礼物盒弹簧风格）
-    const rings = 7;
-    const step = natLen/(rings+0.5);
-    const rx = step*0.45;
-    for (let i=1; i<=rings; i++) {
-      const cx = ax + dir*step*(i-0.5);
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
-      ctx.stroke();
-    }
-
-    // 绘制端面板
-    ctx.lineWidth = 2 * DPR;
-    const capH = rBall*0.86*(1-0.18*t);
-    ctx.beginPath();
-    ctx.moveTo(fx,cy-capH);
-    ctx.lineTo(fx,cy+capH);
-    ctx.stroke();
-
-    ctx.restore();
-  }
-
-  function draw(blackDrawY) {
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle="#fff"; ctx.fillRect(0,0,W,H);
-    const {railL,railR,rBall,gapW,exitW,exitInset,gongR,gongX,gongY,pTop,pBot} = L;
-
-    // 绘制横线导轨（蓝线风格）- 延伸到画布最边缘（紧贴蓝边框）
-    for (let i=0;i<ROWS;i++) {
-      const fy=floorY(i), gap=gaps[i];
-      const gl=gap.xc-gapW/2, gr=gap.xc+gapW/2;
-      ctx.strokeStyle="#3A6FA8"; ctx.lineWidth=1.5*DPR;
-      ctx.beginPath();
-      if (i===ROWS-1) {
-        const el=railR-exitInset-exitW;
-        // 最后一行：横线延伸到画布最左边缘，到出口前
-        ctx.moveTo(0,fy); ctx.lineTo(el,fy); ctx.stroke();
-        // 出口标记
-        ctx.strokeStyle="#34C759";
-        ctx.lineWidth=2*DPR;
-        ctx.beginPath();
-        ctx.arc(el+exitW/2, fy-rBall, rBall*0.6, 0, Math.PI*2);
-        ctx.stroke();
-      } else {
-        // 横线延伸到画布最左边缘(0)和最右边缘(W)
-        ctx.moveTo(0,fy); ctx.lineTo(gl,fy);
-        ctx.moveTo(gr,fy); ctx.lineTo(W,fy);
-        ctx.stroke();
-      }
-    }
-    // 绘制高摩擦区域（沙地区域）- 蓝线梳状纹理（小程序UI规范）
-    for (let i=0;i<ROWS;i++) {
-      const zone = sandZones[i];
-      if (!zone) continue;
-      const fy = floorY(i);
-      const halfW = zone.w / 2;
-      const x1 = zone.xc - halfW;
-      const x2 = zone.xc + halfW;
-
-      // 蓝线梳状纹理（静态，固定5根线）
-      ctx.strokeStyle = `rgba(58,111,168,0.55)`; // #3A6FA8 带透明度
-      ctx.lineWidth = 1.5 * DPR;
-      const lineCount = 5; // 固定5根线，静态显示
-      const lineHeight = rBall * 0.7; // 跨行线上下各一半
-      for (let d=0; d<lineCount; d++) {
-        const dx = x1 + (x2-x1) * (d+0.5)/lineCount;
-        ctx.beginPath();
-        ctx.moveTo(dx, fy - lineHeight);
-        ctx.lineTo(dx, fy + lineHeight);
-        ctx.stroke();
-      }
-    }
-
-    // 绘制坡度（手绘风格三角形/梯形山丘）
-    for (const ramp of ramps) {
-      const fy = floorY(ramp.row);
-      const yBase = fy;
-      const yTop = fy - ramp.h;
-
-      // 三段边界
-      const xLeft = ramp.xc - ramp.w/2;           // 左端（坡底）
-      const xSlopeTopLeft = xLeft + ramp.slopeW;  // 上坡顶/平台左
-      const xSlopeTopRight = xSlopeTopLeft + ramp.flatW;  // 平台右/下坡顶
-      const xRight = ramp.xc + ramp.w/2;          // 右端（坡底）
-
-      // 判断哪个面摩擦力最大
-      const maxStrength = Math.max(ramp.upStrength, ramp.flatStrength, ramp.downStrength);
-      const upIsHigh = ramp.upStrength === maxStrength && maxStrength > 0;
-      const flatIsHigh = ramp.flatStrength === maxStrength && maxStrength > 0;
-      const downIsHigh = ramp.downStrength === maxStrength && maxStrength > 0;
-
-      // 基础颜色（暖土色）
-      const baseColor = "rgba(180,150,120,";
-      const shadowColor = "rgba(140,110,85,";
-
-      // 绘制整个坡度轮廓（手绘风格粗线条）
-      ctx.strokeStyle = "rgba(120,90,70,0.6)";
-      ctx.lineWidth = 2 * DPR;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-
-      // 左侧斜坡（上坡面）- 较浅的填充
-      const upAlpha = upIsHigh ? 0.45 : 0.25;
-      ctx.fillStyle = baseColor + upAlpha + ")";
-      ctx.beginPath();
-      ctx.moveTo(xLeft, yBase);
-      ctx.lineTo(xSlopeTopLeft, yTop);
-      ctx.lineTo(xSlopeTopLeft, yBase);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-
-      // 平台顶面
-      const flatAlpha = flatIsHigh ? 0.45 : 0.25;
-      ctx.fillStyle = baseColor + flatAlpha + ")";
-      ctx.fillRect(xSlopeTopLeft, yTop, ramp.flatW, ramp.h);
-      ctx.beginPath();
-      ctx.moveTo(xSlopeTopLeft, yTop);
-      ctx.lineTo(xSlopeTopRight, yTop);
-      ctx.lineTo(xSlopeTopRight, yBase);
-      ctx.stroke();
-
-      // 右侧斜坡（下坡面）- 带阴影感的填充
-      const downAlpha = downIsHigh ? 0.45 : 0.25;
-      ctx.fillStyle = baseColor + downAlpha + ")";
-      ctx.beginPath();
-      ctx.moveTo(xSlopeTopRight, yTop);
-      ctx.lineTo(xRight, yBase);
-      ctx.lineTo(xSlopeTopRight, yBase);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-
-      // 绘制阴影/纹理线条（手绘风格）
-      ctx.strokeStyle = shadowColor + "0.4)";
-      ctx.lineWidth = 1 * DPR;
-
-      // 上坡面纹理（从左下到右上）
-      if (ramp.slopeW > rBall) {
-        const lines = Math.floor(ramp.slopeW / (rBall * 0.8));
-        for (let i = 1; i < lines; i++) {
-          const t = i / lines;
-          const x1 = xLeft + (xSlopeTopLeft - xLeft) * t;
-          const y1 = yBase - (yBase - yTop) * t;
-          ctx.beginPath();
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(x1 + rBall * 0.4, y1 - rBall * 0.6);
-          ctx.stroke();
-        }
-      }
-
-      // 下坡面纹理（从左上到右下）
-      if (ramp.slopeW > rBall) {
-        const lines = Math.floor(ramp.slopeW / (rBall * 0.8));
-        for (let i = 1; i < lines; i++) {
-          const t = i / lines;
-          const x1 = xSlopeTopRight + (xRight - xSlopeTopRight) * t;
-          const y1 = yTop + (yBase - yTop) * t;
-          ctx.beginPath();
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(x1 + rBall * 0.4, y1 + rBall * 0.6);
-          ctx.stroke();
-        }
-      }
-
-      // 摩擦力高的面添加额外阴影填充（深色斜线）
-      if (maxStrength > 0) {
-        ctx.strokeStyle = "rgba(100,70,50,0.35)";
-        ctx.lineWidth = 2 * DPR;
-
-        if (upIsHigh) {
-          // 上坡面加粗阴影线
-          for (let i = 0; i < 5; i++) {
-            const t = (i + 0.5) / 5;
-            const x1 = xLeft + (xSlopeTopLeft - xLeft) * t;
-            const y1 = yBase - (yBase - yTop) * t;
-            ctx.beginPath();
-            ctx.moveTo(x1 - rBall * 0.3, y1 + rBall * 0.3);
-            ctx.lineTo(x1 + rBall * 0.5, y1 - rBall * 0.5);
-            ctx.stroke();
-          }
-        } else if (flatIsHigh) {
-          // 平台面加粗阴影线
-          for (let i = 0; i < 3; i++) {
-            const y = yTop + ramp.h * (i + 0.5) / 3;
-            ctx.beginPath();
-            ctx.moveTo(xSlopeTopLeft + rBall * 0.2, y);
-            ctx.lineTo(xSlopeTopRight - rBall * 0.2, y);
-            ctx.stroke();
-          }
-        } else if (downIsHigh) {
-          // 下坡面加粗阴影线
-          for (let i = 0; i < 5; i++) {
-            const t = (i + 0.5) / 5;
-            const x1 = xSlopeTopRight + (xRight - xSlopeTopRight) * t;
-            const y1 = yTop + (yBase - yTop) * t;
-            ctx.beginPath();
-            ctx.moveTo(x1 - rBall * 0.3, y1 - rBall * 0.3);
-            ctx.lineTo(x1 + rBall * 0.5, y1 + rBall * 0.5);
-            ctx.stroke();
-          }
-        }
-      }
-
-      // 顶部的棱线（强调立体感）
-      ctx.strokeStyle = "rgba(160,130,100,0.5)";
-      ctx.lineWidth = 1 * DPR;
-      ctx.beginPath();
-      ctx.moveTo(xSlopeTopLeft, yTop);
-      ctx.lineTo(xSlopeTopRight, yTop);
-      ctx.stroke();
-    }
-
-    // 绘制钉子（简洁的红色圆点）
-    const nailRadius = rBall * 0.3;
-    for (const nail of nails) {
-      const nx = nail.x;
-      const ny = nail.y;
-
-      // 简洁的红色圆点
-      ctx.fillStyle = "#FF453A";
-      ctx.beginPath();
-      ctx.arc(nx, ny, nailRadius, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 轻微阴影增加立体感
-      ctx.fillStyle = "rgba(255,69,58,0.3)";
-      ctx.beginPath();
-      ctx.arc(nx, ny + 1*DPR, nailRadius * 0.8, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // 绘制道具包（圆角矩形风格）
-    for (const box of itemBoxes) {
-      const fy = floorY(box.row);
-      const halfW = box.w / 2;
-      const x1 = box.xc - halfW;
-      const x2 = box.xc + halfW;
-      const boxH = L.rBall * 1.4;
-      const y1 = fy - boxH/2;
-      const radius = 4 * DPR;
-
-      const phase = box.timer % 15;
-      const isStateA = phase < 5;
-
-      if (isStateA) {
-        // 状态A：加速轨道（蓝色圆角矩形）- 小程序UI规范
-        ctx.fillStyle = "rgba(0,122,255,0.10)";
-        ctx.strokeStyle = "#007AFF";
-        ctx.lineWidth = 1.5 * DPR;
-
-        // 圆角矩形
-        roundRect(ctx, x1, y1, x2-x1, boxH, radius);
-        ctx.fill();
-        ctx.stroke();
-
-        // 文字（蓝色）
-        ctx.fillStyle = "#007AFF";
-        ctx.font = `bold ${Math.round(8.5 * DPR)}px sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("加速", box.xc, fy);
-      } else {
-        // 状态B：弹簧（橙色圆角矩形）- 小程序UI规范
-        const now = performance.now();
-        const isSpringActive = box.springActive && now < box.springEndTime;
-
-        // 背景色
-        ctx.fillStyle = isSpringActive ? "rgba(255,149,0,0.15)" : "rgba(255,149,0,0.10)";
-        ctx.strokeStyle = "#FF9500";
-        ctx.lineWidth = 1.5 * DPR;
-
-        // 圆角矩形
-        roundRect(ctx, x1, y1, x2-x1, boxH, radius);
-        ctx.fill();
-        ctx.stroke();
-
-        // 激活时的脉冲效果
-        if (isSpringActive) {
-          ctx.strokeStyle = "rgba(255,149,0,0.4)";
-          ctx.lineWidth = 4 * DPR;
-          roundRect(ctx, x1-2*DPR, y1-2*DPR, x2-x1+4*DPR, boxH+4*DPR, radius+2*DPR);
-          ctx.stroke();
-        }
-
-        // 文字（橙色，小程序UI规范 #CC7700）
-        ctx.fillStyle = "#CC7700";
-        ctx.font = `bold ${Math.round(8.5 * DPR)}px sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(isSpringActive ? "砰!" : "弹簧", box.xc, fy);
-      }
-    }
-
-    // 绘制出口靶子（简洁圆圈）
-    ctx.save(); ctx.translate(gongX,gongY);
-    if (gs.winning) ctx.rotate(Math.PI*2*smoothstep(gs.winT));
-
-    // 外圈（绿色边框）
-    ctx.strokeStyle="#34C759"; ctx.lineWidth=2*DPR;
-    ctx.beginPath(); ctx.arc(0,0,gongR,0,Math.PI*2); ctx.stroke();
-
-    // 内圈（浅灰填充）
-    ctx.fillStyle="rgba(52,199,89,0.1)";
-    ctx.beginPath(); ctx.arc(0,0,gongR*0.7,0,Math.PI*2); ctx.fill();
-
-    // 十字准心
-    ctx.strokeStyle="#34C759"; ctx.lineWidth=1.5*DPR;
-    ctx.beginPath();
-    ctx.moveTo(-gongR*0.4,0); ctx.lineTo(gongR*0.4,0);
-    ctx.moveTo(0,-gongR*0.4); ctx.lineTo(0,gongR*0.4); ctx.stroke();
-
-    ctx.restore();
-    // 获胜时显示最终得分
-    if (gs.winning) {
-      // 半透明遮罩
-      ctx.fillStyle = "rgba(255,255,255,0.85)";
-      ctx.fillRect(0, 0, W, H);
-
-      // 得分圆环
-      const ringR = 50 * DPR;
-      ctx.strokeStyle = "#34C759";
-      ctx.lineWidth = 4 * DPR;
-      ctx.beginPath();
-      ctx.arc(W/2, H/2 - 20*DPR, ringR, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // 得分文字
-      ctx.fillStyle = "#1a1a1a";
-      ctx.font = `bold ${Math.round(28*DPR)}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(`${gs.score}`, W/2, H/2 - 20*DPR);
-
-      // 评语
-      ctx.font = `bold ${Math.round(18*DPR)}px sans-serif`;
-      ctx.fillStyle = gs.score >= 100 ? "#34C759" : (gs.score >= 80 ? "#007AFF" : "#FF9500");
-      const text = gs.score >= 100 ? "🎉 完美通关！" : (gs.score >= 80 ? "👏 优秀！" : "💪 继续加油！");
-      ctx.fillText(text, W/2, H/2 + 50*DPR);
-    }
-
-    // 游戏失败弹窗
-    if (gs.gameOver) {
-      // 半透明遮罩
-      ctx.fillStyle = "rgba(255,255,255,0.85)";
-      ctx.fillRect(0, 0, W, H);
-
-      // 红色警示圆
-      ctx.fillStyle = "#FF453A";
-      ctx.beginPath();
-      ctx.arc(W/2, H/2 - 30*DPR, 35*DPR, 0, Math.PI * 2);
-      ctx.fill();
-
-      // ✕ 符号
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 4 * DPR;
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      ctx.moveTo(W/2 - 12*DPR, H/2 - 42*DPR);
-      ctx.lineTo(W/2 + 12*DPR, H/2 - 18*DPR);
-      ctx.moveTo(W/2 + 12*DPR, H/2 - 42*DPR);
-      ctx.lineTo(W/2 - 12*DPR, H/2 - 18*DPR);
-      ctx.stroke();
-
-      // 文字
-      ctx.fillStyle = "#1a1a1a";
-      ctx.font = `bold ${Math.round(20*DPR)}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.fillText("游戏失败", W/2, H/2 + 25*DPR);
-      ctx.font = `${Math.round(14*DPR)}px sans-serif`;
-      ctx.fillStyle = "#8e8e93";
-      ctx.fillText("分数已耗尽，请重新开始", W/2, H/2 + 50*DPR);
-    }
-    if (!gs.winning && !gs.gameOver) {
-      const side=gs.springSide, ct=gs.charging?gs.chargeT:0;
-      // 弹簧始终固定在地面高度，不随球弹跳
-      const floorYVal = ballY(gs.row);
-
-      // 弹簧绘制在固定地面高度（紧贴墙边）
-      drawSpring(side, floorYVal, ct);
-
-      if (!gs.wExists) {
-        // 待发射的白球固定在地面高度，不随其他球弹跳
-        const compress=gs.charging ? L.springNatLen*0.36*smoothstep(ct) : 0;
-        const wx=whiteBallRestX(side,compress);
-        drawBall(ctx, wx, floorYVal, rBall, "#fff", false);
-      }
-    }
-    // 绘制黑球（带阴影和高光）
-    // blackDrawY 已经包含了正确的Y坐标（包括下落过程中的位置或坡道高度）
-    drawBall(ctx, gs.bx, blackDrawY, rBall, "#1a1a1a", true);
-
-    // 绘制白球（带阴影和高光）
-    if (gs.wExists) {
-      let whiteY;
-      if (gs.whiteFalling) {
-        // 白球下落时，使用白球自己的下落Y坐标
-        whiteY = gs.wy;
-      } else if (gs.blackFalling) {
-        // 黑球下落时，白球留在上一行的地面高度
-        whiteY = ballY(gs.wRow);
-      } else if (Math.abs(gs.wvy) > 1 || gs.wy < ballY(gs.wRow) - 1) {
-        // 白球在垂直弹跳，使用其实际Y坐标
-        whiteY = gs.wy;
-      } else {
-        // 白球在地面滚动，使用白球自己的地面高度（不受黑球弹跳影响）
-        const whiteRampOffset = getRampHeightOffset(gs.wx, gs.wRow);
-        whiteY = ballY(gs.wRow) + whiteRampOffset;
-      }
-      drawBall(ctx, gs.wx, whiteY, rBall, "#fff", false);
-    }
-
-    // 状态信息已移到HTML中显示
-  }
-
-  // 辅助函数：绘制带立体感的球（小程序UI规范）
-  function drawBall(ctx, x, y, r, color, isBlack) {
-    if (isBlack) {
-      // 黑球：径向渐变 中心#555555 → 边缘#111111
-      const grad = ctx.createRadialGradient(
-        x - r*0.25, y - r*0.25, r*0.1,
-        x, y, r
-      );
-      grad.addColorStop(0, "#555555");
-      grad.addColorStop(1, "#111111");
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI*2);
-      ctx.fill();
-
-      // 边框 1px #222222
-      ctx.strokeStyle = "#222222";
-      ctx.lineWidth = 1 * DPR;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI*2);
-      ctx.stroke();
-
-      // 高光 rgba(255,255,255,0.28)，半径约2px
-      ctx.fillStyle = "rgba(255,255,255,0.28)";
-      ctx.beginPath();
-      ctx.arc(x - r*0.35, y - r*0.35, r*0.15, 0, Math.PI*2);
-      ctx.fill();
-    } else {
-      // 白球：径向渐变 中心#FFFFFF → 边缘#E0E0E0
-      const grad = ctx.createRadialGradient(
-        x - r*0.25, y - r*0.25, r*0.1,
-        x, y, r
-      );
-      grad.addColorStop(0, "#ffffff");
-      grad.addColorStop(1, "#e0e0e0");
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI*2);
-      ctx.fill();
-
-      // 边框 1.5px #BBBBBB
-      ctx.strokeStyle = "#bbbbbb";
-      ctx.lineWidth = 1.5 * DPR;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI*2);
-      ctx.stroke();
-
-      // 高光 rgba(255,255,255,0.9)，半径约2.5px
-      ctx.fillStyle = "rgba(255,255,255,0.9)";
-      ctx.beginPath();
-      ctx.arc(x - r*0.35, y - r*0.35, r*0.18, 0, Math.PI*2);
-      ctx.fill();
-    }
-  }
-
-  // 更新HTML中的状态显示
-  // 小程序：更新UI状态
-  function updateStatusUI() {
-    // 得分区：左侧得分值
-    const scoreValue = document.getElementById('scoreValue');
-    if (scoreValue) {
-      scoreValue.textContent = `${gs.score}/100`;
-    }
-
-    // 当前层数文字
-    const currentRow = document.getElementById('currentRow');
-    if (currentRow) {
-      currentRow.textContent = gs.row + 1;
-    }
-
-    // 尝试信息
-    const attemptInfo = document.getElementById('attemptInfo');
-    if (attemptInfo) {
-      if (gs.winning) {
-        attemptInfo.textContent = "通关成功";
-      } else if (gs.gameOver) {
-        attemptInfo.textContent = "游戏结束";
-      } else if (gs.rowAttempts > 0 && !gs.blackFalling) {
-        attemptInfo.textContent = `第${gs.rowAttempts}次尝试`;
-      } else {
-        attemptInfo.textContent = "准备出杆";
-      }
-    }
-  }
-
-  function tick(ts) {
-    const dt = gs.lastTs ? Math.min((ts-gs.lastTs)/1000, 0.033) : 0;
-    gs.lastTs = ts;
-
-    // 更新HTML状态
-    updateStatusUI();
-
-    // 更新道具包计时器
-    updateItemBoxes(dt);
-
-    // 游戏失败时只绘制，不更新物理
-    if (gs.gameOver) {
-      draw(ballY(gs.row));
-      requestAnimationFrame(tick);
-      return;
-    }
-    if (gs.charging) gs.chargeT = (ts-gs.chargeStart)/CHARGE_MAX_MS;  // 允许超充能，无上限
-    let blackDrawY = ballY(gs.row);
-    if (gs.winning) {
-      // 通关动画由 showWinOverlay 控制，3秒后自动 resetGame
-    } else {
-      // ===== 白球物理更新（始终运行，独立于黑球状态）=====
-      if (gs.wExists) {
-        // 记录白球本帧起始位置，用于高速碰撞检测
-        const frameStartWx = gs.wx;
-
-        // 白球位移
-        gs.wx += gs.wvx * dt;
-
-        // 白球墙壁/弹簧解算
-        if (!gs.whiteFalling) {
-          [gs.wx,gs.wvx] = resolveWalls(gs.wx, gs.wvx);
-          [gs.wx,gs.wvx] = resolveSpringWall(gs.wx, gs.wvx, gs.springSide);
-        }
-
-        // 白球摩擦力（仅当白球不下落时）
-        const whiteSandStrength = !gs.whiteFalling ? getSandFrictionStrength(gs.wx, gs.wRow) : 0;
-        const whiteRampStrength = !gs.whiteFalling ? getRampFrictionStrength(gs.wx, gs.wRow) : 0;
-        const whiteFrictionStrength = Math.max(whiteSandStrength, whiteRampStrength);
-        gs.wvx = applyFriction(gs.wvx, whiteFrictionStrength);
-
-        // 白球坡度重力
-        gs.wvx = applyRampGravity(gs.wx, gs.wRow, gs.wvx);
-
-        // 白球垂直弹跳（仅当白球不下落时）
-        if (!gs.whiteFalling) {
-          // 只更新白球的垂直运动
-          const g = GRAVITY * DPR;
-          const {rBall, rowH} = L;
-          const whiteFloorY = ballY(gs.wRow);
-          const whiteCeilingY = whiteFloorY - rowH * 0.85;
-
-          if (Math.abs(gs.wvy) > 1 || gs.wy < whiteFloorY - 1) {
-            gs.wvy += g * dt;
-            gs.wy += gs.wvy * dt;
-            if (gs.wy < whiteCeilingY + rBall) {
-              gs.wy = whiteCeilingY + rBall;
-              gs.wvy = Math.abs(gs.wvy) * 0.3;
-            }
-            if (gs.wy >= whiteFloorY) {
-              gs.wy = whiteFloorY;
-              gs.wvy = 0;
-            }
-          } else {
-            gs.wy = whiteFloorY;
-            gs.wvy = 0;
-          }
-        }
-
-        // 使用扫掠检测处理高速碰撞（仅当黑球不下落时）
-        if (!gs.blackFalling) {
-          resolveCollisionSwept(frameStartWx);
-        }
-      }
-
-      if (gs.blackFalling) {
-        blackDrawY = updateFall(dt);
-        if (!gs.blackFalling){
-          // 落地后不要立即销毁白球，让maybeEndShot在球静止后处理
-          clampBlackBallSpringRoom();
-          updatePads();
-        }
-      } else {
-        // 更新最后移动方向
-        updateLastDir();
-
-        // 更新道具包计时器和弹簧触发状态
-        updateItemBoxes(dt);
-
-        // 应用加速轨道效果（状态A：0-5秒）
-        applyBoostEffects(dt);
-
-        const frameStartBx = gs.bx;
-        gs.bx += gs.bvx * dt;
-
-        // 第二轮墙壁/弹簧解算（黑球）
-        [gs.bx,gs.bvx] = resolveWalls(gs.bx, gs.bvx);
-        [gs.bx,gs.bvx] = resolveSpringWall(gs.bx, gs.bvx, gs.springSide);
-
-        // ===== 弹簧物理效果（必须在墙壁解算后、摩擦力前应用）=====
-        // 这确保球在正确的X位置被弹起，且速度不为0
-        applySpringForces();
-
-        // ===== 黑球垂直弹跳物理（当前层内弹跳，带天花板限制）=====
-        if (!gs.whiteFalling) {
-          updateVerticalBounce(dt);
-        }
-
-        // 所有位移完成后，应用黑球摩擦力
-        const blackSandStrength = getSandFrictionStrength(gs.bx, gs.row);
-        const blackRampStrength = getRampFrictionStrength(gs.bx, gs.row);
-        const blackFrictionStrength = Math.max(blackSandStrength, blackRampStrength);
-        gs.bvx = applyFriction(gs.bvx, blackFrictionStrength);
-
-        // 应用坡度重力（让球在坡上自然滑下）
-        gs.bvx = applyRampGravity(gs.bx, gs.row, gs.bvx);
-
-        // 重置加速标记（当球离开道具包时）
-        resetBoostIfLeftBoxes();
-
-        // 缝隙判断（仅黑球）
-        if (!tryFallThroughGap(frameStartBx)) {
-          if (gs.row===ROWS-1) checkExit();
-        }
-      }
-      maybeEndShot();
-      if (!gs.winning && !gs.blackFalling && !gs.whiteFalling && Math.abs(gs.bvx) < STOP_EPS &&
-          (!gs.wExists || Math.abs(gs.wvx) < STOP_EPS)) {
-        clampBlackBallSpringRoom();
-        updatePads();
-      }
-    }
-
-    // 更新 blackDrawY：垂直弹跳或坡道上时使用 gs.by（包含坡道高度）
-    if (!gs.blackFalling) {
-      // 始终使用 gs.by，因为它已包含坡道高度偏移
-      blackDrawY = gs.by;
-    }
-
-    draw(blackDrawY);
-    requestAnimationFrame(tick);
-  }
-
-  // ===== 过关反馈动画函数 =====
-  const stageWrap = document.querySelector(".stageWrap");
-
-  // 场景1：每层通过 — 飘一朵小红花
-  function showFlower() {
-    const el = document.createElement("div");
-    el.className = "feedback-flower";
-    el.textContent = "🌸";
-    const rect = canvas.getBoundingClientRect();
-    const wrapRect = stageWrap.getBoundingClientRect();
-    el.style.left = (gs.bx / DPR + rect.left - wrapRect.left - 14) + "px";
-    el.style.bottom = (wrapRect.bottom - rect.top - gs.by / DPR + 10) + "px";
-    stageWrap.appendChild(el);
-    el.addEventListener("animationend", () => el.remove());
-  }
-
-  // 场景2：最终通关 — 开心胖橘猫跳舞
-  function showWinOverlay() {
-    const ov = document.createElement("div");
-    ov.className = "feedback-overlay";
-    ov.style.background = "rgba(255,250,240,0.94)";
-    // 猫
-    const catSvg = document.createElementNS("http://www.w3.org/2000/svg","svg");
-    catSvg.setAttribute("width","120");
-    catSvg.setAttribute("height","140");
-    catSvg.style.animation = "catDance 0.55s infinite alternate ease-in-out";
-    const use = document.createElementNS("http://www.w3.org/2000/svg","use");
-    use.setAttribute("href","#cat-happy");
-    catSvg.appendChild(use);
-    ov.appendChild(catSvg);
-    // 文字
-    const t1 = document.createElement("div");
-    t1.textContent = "🎉 恭喜通关！";
-    t1.style.cssText = "color:#FF6B35;font-size:22px;font-weight:bold;margin-top:12px;animation:bounceIn 0.6s ease-out;";
-    ov.appendChild(t1);
-    const t2 = document.createElement("div");
-    t2.textContent = "3秒后进入下一关...";
-    t2.style.cssText = "color:#999;font-size:13px;margin-top:8px;opacity:0;animation:bounceIn 0.5s ease-out 0.6s forwards;";
-    ov.appendChild(t2);
-    // 飘落小红花
-    for (let i = 0; i < 8; i++) {
-      const f = document.createElement("div");
-      f.textContent = "🌸";
-      f.style.cssText = `position:absolute;top:-20px;font-size:${16+Math.random()*12}px;left:${Math.random()*90}%;pointer-events:none;animation:flowerFall ${2+Math.random()*2}s ease-in ${Math.random()*1.5}s forwards;`;
-      ov.appendChild(f);
-    }
-    stageWrap.appendChild(ov);
-    setTimeout(() => {
-      ov.style.opacity = "0";
-      setTimeout(() => { ov.remove(); resetGame(); }, 400);
-    }, 3000);
-  }
-
-  // 场景3：出杆失败 — 生气胖橘猫弹出
-  function showAngryPopup() {
-    const el = document.createElement("div");
-    el.className = "feedback-angry";
-    const catSvg = document.createElementNS("http://www.w3.org/2000/svg","svg");
-    catSvg.setAttribute("width","60");
-    catSvg.setAttribute("height","64");
-    const use = document.createElementNS("http://www.w3.org/2000/svg","use");
-    use.setAttribute("href","#cat-angry");
-    catSvg.appendChild(use);
-    el.appendChild(catSvg);
-    stageWrap.appendChild(el);
-    el.addEventListener("animationend", () => el.remove());
-  }
-
-  // 场景4：游戏结束 — 鬼脸胖橘猫
-  function showLoseOverlay() {
-    const ov = document.createElement("div");
-    ov.className = "feedback-overlay";
-    ov.style.background = "rgba(25,18,15,0.88)";
-    ov.style.cursor = "pointer";
-    // 猫
-    const catSvg = document.createElementNS("http://www.w3.org/2000/svg","svg");
-    catSvg.setAttribute("width","140");
-    catSvg.setAttribute("height","150");
-    catSvg.style.animation = "catShake 0.25s infinite alternate ease-in-out";
-    const use = document.createElementNS("http://www.w3.org/2000/svg","use");
-    use.setAttribute("href","#cat-angry");
-    catSvg.appendChild(use);
-    ov.appendChild(catSvg);
-    // 文字
-    const t1 = document.createElement("div");
-    t1.textContent = "你又失败了！";
-    t1.style.cssText = "color:#FF5544;font-size:22px;font-weight:bold;margin-top:14px;animation:shakeIn 0.5s ease-out;";
-    ov.appendChild(t1);
-    const t2 = document.createElement("div");
-    t2.textContent = "再来一次吧";
-    t2.style.cssText = "color:#aaa;font-size:13px;margin-top:8px;";
-    ov.appendChild(t2);
-    stageWrap.appendChild(ov);
-    const dismiss = () => {
-      ov.style.opacity = "0";
-      setTimeout(() => { ov.remove(); resetGame(); }, 400);
-    };
-    ov.addEventListener("click", dismiss);
-    setTimeout(dismiss, 3000);
-  }
-
-  buildLayout(); resetGame(); requestAnimationFrame(tick);
 })();
 </script>
 </body>
