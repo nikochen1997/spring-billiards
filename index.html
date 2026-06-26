@@ -93,7 +93,7 @@ const W=440, H=760, WALL=16, LEFT=WALL, RIGHT=W-WALL, TOP=14, BOTTOM=H-14, BASE_
 const CFG={
   gravity:1500, maxSpeed:1800, restWall:0.50, restRail:0.42, restPeg:0.66,
   friction:0.12, airDrag:0.06, roll:0.86, sleepV:14,
-  minImpulse:250, maxImpulse:760, chargeMs:1100, upRatio:0.55,
+  minImpulse:250, maxImpulse:760, chargeMs:1100, upRatio:0.42,
   springPop:1080, sandDragX:0.90, sandDragY:0.96, magnet:2600, slowDrag:0.86, bombR:66, batPower:840,
 };
 const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
@@ -109,14 +109,14 @@ function genLevel(p){
   const rng=mulberry32(p.seed);
   const yTop=128, yBot=690, n=p.rails;
   const rails=[], pegs=[], boxes=[], sands=[], coins=[], rings=[], hearts=[];
-  const half=p.gapW/2, minX=LEFT+half+16, maxX=RIGHT-half-16, mid=(minX+maxX)/2;
+  const gw=Math.max(p.gapW,42), shiftMax=Math.min(p.shift||120,116), pegR=Math.min(p.pegRate,0.5), exPegs=Math.min(p.extraPegs||0,2); const half=gw/2, minX=LEFT+half+16, maxX=RIGHT-half-16, mid=(minX+maxX)/2;
   const gc=[]; let gx=Math.round(clamp(lerp(minX,maxX,rng()),minX,maxX)); let dir=gx<mid?1:-1;
-  for(let i=0;i<n;i++){ const y=Math.round(yTop+(yBot-yTop)*i/(n-1)); if(i>0){ let shift=lerp(70,p.shift||120,rng()); let ng=gx+dir*shift; if(ng<minX||ng>maxX){dir=-dir;ng=gx+dir*shift;} ng=clamp(ng,minX,maxX); if(Math.abs(ng-gx)<60){dir=-dir;ng=clamp(gx+dir*78,minX,maxX);} gx=ng; if(rng()<0.35)dir=-dir; } gx=Math.round(gx); gc.push([y,gx]); rails.push({y,gaps:[[gx,p.gapW]]}); }
-  for(let i=0;i<n;i++){ if(rng()<p.pegRate){ const sd=rng()<0.5?-1:1; const px=clamp(Math.round(gc[i][1]+sd*(half+22+rng()*46)),LEFT+16,RIGHT-16); const py=Math.round(gc[i][0]-8-rng()*14); pegs.push([px,py]); } }
-  for(let i=0;i<(p.extraPegs||0);i++){ const k=Math.floor(rng()*(n-1)); const sd=rng()<0.5?-1:1; const px=clamp(Math.round(gc[k][1]+sd*(half+30+rng()*44)),LEFT+16,RIGHT-16); const py=Math.round((gc[k][0]+gc[k+1][0])/2); pegs.push([px,py]); }
+  for(let i=0;i<n;i++){ const y=Math.round(yTop+(yBot-yTop)*i/(n-1)); if(i>0){ let shift=lerp(64,shiftMax,rng()); let ng=gx+dir*shift; if(ng<minX||ng>maxX){dir=-dir;ng=gx+dir*shift;} ng=clamp(ng,minX,maxX); if(Math.abs(ng-gx)<60){dir=-dir;ng=clamp(gx+dir*78,minX,maxX);} gx=ng; if(rng()<0.35)dir=-dir; } gx=Math.round(gx); gc.push([y,gx]); rails.push({y,gaps:[[gx,gw]]}); }
+  for(let i=0;i<n;i++){ if(rng()<pegR){ const sd=rng()<0.5?-1:1; const px=clamp(Math.round(gc[i][1]+sd*(half+22+rng()*46)),LEFT+16,RIGHT-16); const py=Math.round(gc[i][0]-8-rng()*14); pegs.push([px,py]); } }
+  for(let i=0;i<exPegs;i++){ const k=Math.floor(rng()*(n-1)); const sd=rng()<0.5?-1:1; const px=clamp(Math.round(gc[k][1]+sd*(half+30+rng()*44)),LEFT+16,RIGHT-16); const py=Math.round((gc[k][0]+gc[k+1][0])/2); pegs.push([px,py]); }
   for(let i=1;i<n;i++){ if(rng()<p.boxRate){ const x0=gc[i-1][1],x1=gc[i][1]; let bx=Math.round(lerp(Math.min(x0,x1),Math.max(x0,x1),0.35+rng()*0.3)); bx=clamp(bx,LEFT+22,RIGHT-22); boxes.push({x:bx,y:gc[i][0]-19,r:14,revealed:false,effect:null,flashT:0}); } }
   for(let i=1;i<n;i++){ if(rng()<p.sandRate){ const x0=gc[i-1][1],x1=gc[i][1]; let sx=Math.round(lerp(Math.min(x0,x1),Math.max(x0,x1),0.5)); sx=clamp(sx,LEFT+46,RIGHT-46); if(Math.abs(sx-gc[i][1])>half+24)sands.push({x:sx,y:gc[i][0],w:80}); } }
-  for(let i=0;i<(p.rings||0);i++){ const k=2+Math.floor(rng()*Math.max(1,n-3)); const ry=Math.round((gc[k][0]+gc[k-1][0])/2); const rx=clamp(Math.round(rand(LEFT+60,RIGHT-60)),LEFT+50,RIGHT-50); rings.push({x:rx,y:ry,r:26}); }
+  for(let i=0;i<Math.min(p.rings||0,2);i++){ const k=2+Math.floor(rng()*Math.max(1,n-3)); const ry=Math.round((gc[k][0]+gc[k-1][0])/2); const rx=clamp(Math.round(rand(LEFT+60,RIGHT-60)),LEFT+50,RIGHT-50); rings.push({x:rx,y:ry,r:26}); }
   for(let i=0;i<(p.hearts||0);i++){ const k=Math.floor(rng()*n); const hx=clamp(Math.round(gc[k][1]+(rng()*2-1)*80),LEFT+18,RIGHT-18); const hy=Math.round(gc[k][0]-14); hearts.push({x:hx,y:hy,got:false}); }
   for(let i=0;i<(p.coins||0);i++){ const k=Math.floor(rng()*n); const cx=clamp(Math.round(gc[k][1]+(rng()*2-1)*78),LEFT+18,RIGHT-18); const span=k>0?(gc[k][0]-gc[k-1][0]):44; const cy=Math.round(gc[k][0]-12-rng()*Math.min(span*0.4,40)); coins.push([cx,cy]); }
   const pf=pegs.filter(p2=>{ for(const c of gc){ if(Math.abs(p2[0]-c[1])<half+10 && p2[1]>c[0] && p2[1]<c[0]+52) return false; } return true; });
@@ -141,7 +141,9 @@ const LEVEL_PARAMS=[
   {seed:211,name:"极窄",par:13,rails:12,gapW:36,shift:114,pegRate:0.55,extraPegs:3,boxRate:0.7,sandRate:0.4,rings:2,hearts:2,coins:9,tip:"1.6倍球径的窄缝，控力极限"},
   {seed:233,name:"终极考验",par:14,rails:13,gapW:36,shift:116,pegRate:0.6,extraPegs:4,boxRate:0.8,sandRate:0.4,rings:3,hearts:3,coins:10,tip:"所有花样的总和——速度、金币、保命，全都要"},
 ];
-const LEVELS=LEVEL_PARAMS.map(genLevel);
+function validReachable(L){ const rs=L.rails, gw=rs[0].gaps[0][1]; if(Math.abs(L.ball[0]-rs[0].gaps[0][0])>136) return false; for(let k=1;k<rs.length;k++){ if(Math.abs(rs[k].gaps[0][0]-rs[k-1].gaps[0][0])>128) return false; } for(const r of rs){ const gx=r.gaps[0][0]; for(const p of L.pegs){ if(Math.abs(p[0]-gx)<gw/2 && p[1]>r.y && p[1]<r.y+52) return false; } } return true; }
+function genValidLevel(p){ for(let a=0;a<45;a++){ const L=genLevel({...p,seed:(Math.random()*1e9)>>>0}); if(validReachable(L)) return L; } return genLevel({...p,seed:(Math.random()*1e9)>>>0,gapW:Math.max(p.gapW,50),shift:78}); }
+let LEVELS=LEVEL_PARAMS.map(genValidLevel);
 
 // ===== 盲盒效果池(加权)：好运/特殊球/陷阱，极端项稀有 =====
 const EFFECTS=[
@@ -382,7 +384,7 @@ function updHud(){ elTime.textContent=elapsed.toFixed(1)+'s'; elCoin.textContent
 function loadLevel(i, fresh){
   levelIdx=i; state="play"; landed=false; charging=false; chargeSide=null; charge=0; previewPts=[];
   parts.length=0; trail.length=0; score=0; minis.length=0; buildLevel(i); ball.hp=3;
-  if(fresh){ gameT0=now(); coinCount=0; }
+  if(fresh){ gameT0=now(); coinCount=0; LEVELS=LEVEL_PARAMS.map(genValidLevel); }
   coinsAtLevelStart=coinCount;
   elLvName.textContent=`第 ${i+1} 关 · ${LEVELS[i].name}`;
   updHud(); setHp();
